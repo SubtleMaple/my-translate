@@ -88,7 +88,7 @@ export function checkWords(words: string[]): string[] {
 
 export function addVocab(words: string[], contextSentence: string): VocabAddResult {
   const db = getDb()
-  const result: VocabAddResult = { added: [], existed: [] }
+  const result: VocabAddResult = { added: [], existed: [], addedIds: [] }
   const now = Date.now()
   const seen = new Set<string>()
 
@@ -107,6 +107,7 @@ export function addVocab(words: string[], contextSentence: string): VocabAddResu
     )
     if (db.getRowsModified() > 0) {
       result.added.push(word)
+      result.addedIds.push(Number(db.exec('SELECT last_insert_rowid()')[0].values[0][0]))
     } else {
       result.existed.push(word)
     }
@@ -125,25 +126,52 @@ export function deleteVocab(id: number): void {
   markDirty()
 }
 
+export function getVocabById(id: number): VocabEntry | null {
+  const stmt = getDb().prepare(`SELECT ${SELECT_COLUMNS} FROM vocabulary WHERE id = ?`)
+  stmt.bind([id])
+  if (!stmt.step()) {
+    stmt.free()
+    return null
+  }
+  const entry = toVocabEntry(stmt.get())
+  stmt.free()
+  return entry
+}
+
+/** 详情重试入口：置回 pending 并清空失败原因（保留已有字段），随后由队列重新生成 */
+export function resetVocabToPending(id: number): void {
+  getDb().run(
+    "UPDATE vocabulary SET status = 'pending', fail_reason = '', updated_at = ? WHERE id = ?",
+    [Date.now(), id]
+  )
+  markDirty()
+}
+
 export interface VocabDetailPatch {
-  phonetic: string
-  pos: string
-  brief: string
-  detail: string
+  /** undefined 表示保留库中原值（失败回写时不清已有字段） */
+  phonetic?: string
+  pos?: string
+  brief?: string
+  detail?: string
   status: VocabStatus
   failReason?: string
 }
 
-/** 详情生成管线（P5）回写入口 */
+/** 详情生成管线（P5）回写入口：COALESCE 语义的部分更新 */
 export function updateVocabDetail(id: number, patch: VocabDetailPatch): void {
   getDb().run(
-    `UPDATE vocabulary SET phonetic = ?, pos = ?, brief = ?, detail = ?, status = ?, fail_reason = ?, updated_at = ?
+    `UPDATE vocabulary SET
+       phonetic = COALESCE(?, phonetic),
+       pos = COALESCE(?, pos),
+       brief = COALESCE(?, brief),
+       detail = COALESCE(?, detail),
+       status = ?, fail_reason = ?, updated_at = ?
      WHERE id = ?`,
     [
-      patch.phonetic,
-      patch.pos,
-      patch.brief,
-      patch.detail,
+      patch.phonetic ?? null,
+      patch.pos ?? null,
+      patch.brief ?? null,
+      patch.detail ?? null,
       patch.status,
       patch.failReason ?? '',
       Date.now(),

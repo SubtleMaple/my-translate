@@ -43,6 +43,8 @@ export interface VocabAddResult {
   added: string[]
   /** 已存在而被跳过的词 */
   existed: string[]
+  /** 成功加入记录的 id（与 added 一一对应，主进程据此自动入队生成详情） */
+  addedIds: number[]
 }
 
 // ---------------------------------------------------------------- 设置
@@ -154,6 +156,8 @@ export interface RendererApi {
   deleteVocab(id: number): Promise<void>
   /** 订阅生词数据变更（增删/详情生成完成等主进程广播）；返回取消订阅函数 */
   onVocabChanged(cb: () => void): () => void
+  /** 重新生成指定词的详情（失败重试 / 已 ready 词重新生成），主进程置回 pending 并入队 */
+  regenerateDetail(id: number): Promise<void>
 
   // ---- window ----
   setAlwaysOnTop(flag: boolean): Promise<void>
@@ -163,7 +167,4 @@ export interface RendererApi {
   closeWindow(): Promise<void>
   /** 订阅置顶状态变化（托盘菜单切换时主进程广播）；返回取消订阅函数 */
   onAlwaysOnTopChanged(cb: (flag: boolean) => void): () => void
-
-  // ---- Phase 5+ 陆续实现，签名先定死 ----
-  // regenerateDetail(id: number): Promise<void>
 }

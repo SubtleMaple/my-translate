@@ -5,7 +5,10 @@ import type { LlmSettings, TestConnectionResult } from '../../shared/types'
  * Phase 2 仅提供非流式 chatCompletion + testConnection；流式翻译在 Phase 4 扩展
  */
 
-export class LlmError extends Error {}
+export class LlmError extends Error {
+  /** HTTP 状态码；网络层/超时等非 HTTP 错误时可能为 undefined */
+  status?: number
+}
 
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant'
@@ -69,7 +72,9 @@ export async function chatCompletion(
       signal: controller.signal
     })
     if (!res.ok) {
-      throw new LlmError(await describeHttpError(res))
+      const e = new LlmError(await describeHttpError(res))
+      e.status = res.status
+      throw e
     }
     const data = (await res.json()) as { choices?: { message?: { content?: unknown } }[] }
     const content = data?.choices?.[0]?.message?.content

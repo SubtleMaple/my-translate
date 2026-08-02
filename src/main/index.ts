@@ -6,6 +6,7 @@ import { createTray } from './tray'
 import { createMainWindow, setQuitting, showMainWindow } from './window'
 import { initDatabase } from './db/database'
 import { flushDatabase as flushDbFile } from './db/persist'
+import { enqueueAllPending } from './services/vocabService'
 
 // 单实例锁：第二个实例启动时聚焦已有窗口
 const gotLock = app.requestSingleInstanceLock()
@@ -31,6 +32,8 @@ if (!gotLock) {
     registerIpcHandlers()
     createMainWindow()
     createTray()
+    // 崩溃恢复：重启后遗留的 pending 词自动重新入队生成详情
+    enqueueAllPending()
   })
 
   app.on('before-quit', () => {

@@ -47,6 +47,7 @@ const api: RendererApi = {
   addVocab: (words, contextSentence) => ipcRenderer.invoke(IPC.VocabAdd, words, contextSentence),
   updateVocabNote: (id, note) => ipcRenderer.invoke(IPC.VocabUpdateNote, id, note),
   deleteVocab: (id) => ipcRenderer.invoke(IPC.VocabDelete, id),
+  regenerateDetail: (id) => ipcRenderer.invoke(IPC.LlmRegenerateDetail, id),
   onVocabChanged: (cb) => {
     const listener = () => cb()
     ipcRenderer.on(IPC.VocabChanged, listener)

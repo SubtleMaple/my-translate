@@ -1,4 +1,5 @@
 import { describeHttpError, LlmError, normalizeBaseURL } from './client'
+import { TRANSLATE_SYSTEM_PROMPT } from './prompts'
 import type { LlmSettings } from '../../shared/types'
 
 /**
@@ -9,10 +10,6 @@ import type { LlmSettings } from '../../shared/types'
  */
 
 const STREAM_TIMEOUT_MS = 120_000
-
-const TRANSLATE_SYSTEM_PROMPT =
-  '你是一位专业的中英翻译引擎。将用户提供的英文内容翻译为准确、自然、通顺的中文。' +
-  '只输出译文本身，不要添加任何解释、注音、引号或多余内容。'
 
 export interface TranslateEmitter {
   chunk: (delta: string) => void

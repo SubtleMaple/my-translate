@@ -19,6 +19,11 @@ import {
   listVocab,
   updateVocabNote
 } from './db/vocabRepo'
+import {
+  enqueueDetail,
+  regenerateDetail,
+  setVocabChangedListener
+} from './services/vocabService'
 
 /**
  * 集中注册全部 IPC handler
@@ -38,6 +43,9 @@ function broadcastVocabChanged(): void {
 }
 
 export function registerIpcHandlers(): void {
+  // 详情生成队列的变更回调 → 广播渲染端（避免 vocabService ↔ ipc 循环依赖）
+  setVocabChangedListener(broadcastVocabChanged)
+
   // ---------- settings ----------
   ipcMain.handle(IPC.SettingsGet, () => getSettings())
 
@@ -75,8 +83,14 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(IPC.VocabAdd, (_e, words: string[], contextSentence: string) => {
     const result = addVocab(words, contextSentence)
+    // 详情生成队列在后台串行跑，不阻塞本次 invoke 返回
+    for (const id of result.addedIds) enqueueDetail(id)
     broadcastVocabChanged()
     return result
+  })
+
+  ipcMain.handle(IPC.LlmRegenerateDetail, (_e, id: number) => {
+    regenerateDetail(id)
   })
 
   ipcMain.handle(IPC.VocabUpdateNote, (_e, id: number, note: string) => {
