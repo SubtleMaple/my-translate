@@ -8,6 +8,7 @@ import { AppSettings, DEFAULT_SETTINGS, DeepPartial } from '../shared/types'
  * 自写 JSON 配置存储（替代 electron-store，保持 CJS 单模块体系）
  * - 位置：userData/settings.json
  * - 写策略：内存缓存 + 300ms 防抖 + 原子写（tmp → rename），退出前 flushSettings 强制落盘
+ * - 迁移：loadSettings 读盘后规范化（R1：llm 平铺结构 → 嵌套 openai/anthropic）
  */
 
 let cache: AppSettings | null = null
@@ -34,6 +35,32 @@ function deepMerge<T>(base: T, patch: unknown): T {
   return out as T
 }
 
+/**
+ * R1 迁移：旧版 llm 平铺结构 {baseURL, apiKey, model} → 嵌套结构
+ * 仅当 llm 存在且缺少 openai/anthropic 键、且存在旧平铺键时执行，避免误迁移
+ */
+function normalizeLlmShape(raw: unknown): unknown {
+  if (!isPlainObject(raw)) return raw
+  const llm = raw.llm
+  if (!isPlainObject(llm) || llm.openai !== undefined || llm.anthropic !== undefined) {
+    return raw
+  }
+  const { baseURL, apiKey, model, ...rest } = llm
+  if (baseURL === undefined && apiKey === undefined && model === undefined) return raw
+  return {
+    ...raw,
+    llm: {
+      ...rest,
+      type: (typeof llm.type === 'string' ? llm.type : 'openai') as string,
+      openai: {
+        baseURL: typeof baseURL === 'string' ? baseURL : DEFAULT_SETTINGS.llm.openai.baseURL,
+        apiKey: typeof apiKey === 'string' ? apiKey : DEFAULT_SETTINGS.llm.openai.apiKey,
+        model: typeof model === 'string' ? model : DEFAULT_SETTINGS.llm.openai.model
+      }
+    }
+  }
+}
+
 export function loadSettings(): AppSettings {
   if (cache) return cache
   let merged = DEFAULT_SETTINGS
@@ -41,7 +68,7 @@ export function loadSettings(): AppSettings {
   try {
     if (existsSync(p)) {
       const raw = JSON.parse(readFileSync(p, 'utf-8'))
-      merged = deepMerge(DEFAULT_SETTINGS, raw)
+      merged = deepMerge(DEFAULT_SETTINGS, normalizeLlmShape(raw))
     }
   } catch {
     // 文件损坏：备份后用默认值，不阻塞启动

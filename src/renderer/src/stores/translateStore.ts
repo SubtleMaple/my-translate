@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 
 import type { TranslateEvent, VocabAddResult } from '@shared/types'
+import { getActiveLlm } from '@shared/llm'
 import { tokenize, wordList } from '@/lib/tokenize'
 import { useSettingsStore } from './settingsStore'
 
@@ -57,8 +58,8 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
     const status = get().status
     if (!text || status === 'loading' || status === 'streaming') return
 
-    const { llm } = useSettingsStore.getState().settings
-    if (!llm.apiKey || !llm.baseURL || !llm.model) {
+    const { config } = getActiveLlm(useSettingsStore.getState().settings.llm)
+    if (!config.apiKey || !config.baseURL || !config.model) {
       set({ status: 'error', error: '请先在设置页配置大模型（API Key / Base URL / Model）' })
       return
     }

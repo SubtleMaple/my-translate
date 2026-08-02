@@ -4,6 +4,7 @@ import { AddConfirmDialog } from '@/components/translate/AddConfirmDialog'
 import { WordChips } from '@/components/translate/WordChips'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import { getActiveLlm } from '@shared/llm'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useTranslateStore } from '@/stores/translateStore'
 import { useUiStore } from '@/stores/uiStore'
@@ -19,7 +20,7 @@ export function TranslateView() {
   const clear = useTranslateStore((s) => s.clear)
 
   const busy = status === 'loading' || status === 'streaming'
-  const llmConfigured = Boolean(useSettingsStore((s) => s.settings.llm.apiKey))
+  const llmConfigured = Boolean(getActiveLlm(useSettingsStore((s) => s.settings.llm)).config.apiKey)
 
   return (
     <div className="flex h-full flex-col gap-3 p-3">

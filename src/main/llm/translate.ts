@@ -1,5 +1,6 @@
 import { describeHttpError, LlmError, normalizeBaseURL } from './client'
 import { TRANSLATE_SYSTEM_PROMPT } from './prompts'
+import { getActiveLlm } from '../../shared/llm'
 import type { LlmSettings } from '../../shared/types'
 
 /**
@@ -7,9 +8,13 @@ import type { LlmSettings } from '../../shared/types'
  * - 渲染端生成 requestId，主进程以 requestId 管理 AbortController，支持随时中止
  * - 事件经 emit 回调推送（ipc.ts 负责转发到 webContents）
  * - 本文件不依赖 electron，便于纯 node 单元验证
+ * - 协议分支：openai=choices[].delta.content；anthropic=content_block_delta(delta.text)
  */
 
 const STREAM_TIMEOUT_MS = 120_000
+
+/** Anthropic 协议必须显式指定 max_tokens（OpenAI 可省略） */
+const ANTHROPIC_STREAM_MAX_TOKENS = 2000
 
 export interface TranslateEmitter {
   chunk: (delta: string) => void
@@ -33,6 +38,21 @@ export function abortTranslate(requestId: string): void {
   }
 }
 
+/** openai 流：解析 choices[0].delta.content */
+function parseOpenaiLine(line: string): string {
+  const json = JSON.parse(line) as { choices?: { delta?: { content?: string } }[] }
+  const delta = json?.choices?.[0]?.delta?.content
+  return typeof delta === 'string' ? delta : ''
+}
+
+/** anthropic 流：解析 content_block_delta / text_delta（忽略 thinking 块等） */
+function parseAnthropicLine(line: string): string {
+  const json = JSON.parse(line) as { type?: string; delta?: { type?: string; text?: string } }
+  if (json?.type !== 'content_block_delta') return ''
+  if (json?.delta?.type !== 'text_delta') return ''
+  return typeof json.delta.text === 'string' ? json.delta.text : ''
+}
+
 export async function runTranslate(
   requestId: string,
   text: string,
@@ -44,28 +64,49 @@ export async function runTranslate(
   const timer = setTimeout(() => controller.abort(), STREAM_TIMEOUT_MS)
 
   try {
-    if (!settings.apiKey.trim()) {
+    const { type, config } = getActiveLlm(settings)
+    if (!config.apiKey.trim()) {
       throw new LlmError('尚未配置 API Key，请先到设置页填写')
     }
     if (!text.trim()) {
       throw new LlmError('请输入要翻译的内容')
     }
 
-    const url = `${normalizeBaseURL(settings.baseURL)}/chat/completions`
+    const isAnthropic = type === 'anthropic'
+    const url = isAnthropic
+      ? `${normalizeBaseURL(config.baseURL)}/messages`
+      : `${normalizeBaseURL(config.baseURL)}/chat/completions`
+
     const res = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${settings.apiKey.trim()}`
-      },
-      body: JSON.stringify({
-        model: settings.model.trim(),
-        messages: [
-          { role: 'system', content: TRANSLATE_SYSTEM_PROMPT },
-          { role: 'user', content: text }
-        ],
-        stream: true
-      }),
+      headers: isAnthropic
+        ? {
+            'Content-Type': 'application/json',
+            'x-api-key': config.apiKey.trim(),
+            'anthropic-version': '2023-06-01'
+          }
+        : {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${config.apiKey.trim()}`
+          },
+      body: JSON.stringify(
+        isAnthropic
+          ? {
+              model: config.model.trim(),
+              max_tokens: ANTHROPIC_STREAM_MAX_TOKENS,
+              system: TRANSLATE_SYSTEM_PROMPT,
+              messages: [{ role: 'user', content: text }],
+              stream: true
+            }
+          : {
+              model: config.model.trim(),
+              messages: [
+                { role: 'system', content: TRANSLATE_SYSTEM_PROMPT },
+                { role: 'user', content: text }
+              ],
+              stream: true
+            }
+      ),
       signal: controller.signal
     })
 
@@ -94,9 +135,8 @@ export async function runTranslate(
         const data = line.slice(5).trim()
         if (data === '[DONE]' || data === '') continue
         try {
-          const json = JSON.parse(data) as { choices?: { delta?: { content?: string } }[] }
-          const delta = json?.choices?.[0]?.delta?.content
-          if (typeof delta === 'string' && delta.length > 0) {
+          const delta = isAnthropic ? parseAnthropicLine(data) : parseOpenaiLine(data)
+          if (delta.length > 0) {
             full += delta
             emit.chunk(delta)
           }
