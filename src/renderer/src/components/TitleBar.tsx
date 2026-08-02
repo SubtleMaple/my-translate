@@ -1,4 +1,4 @@
-import { Languages, Minus, Moon, Pin, PinOff, Sun, X } from 'lucide-react'
+import { Languages, Maximize2, Minus, Minimize2, Moon, Pin, PinOff, Sun, X } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
 import { useSettingsStore } from '@/stores/settingsStore'
@@ -15,6 +15,8 @@ export function TitleBar() {
   const { dark, toggleDark } = useUiStore()
   const alwaysOnTop = useSettingsStore((s) => s.settings.window.alwaysOnTop)
   const setAlwaysOnTop = useSettingsStore((s) => s.setAlwaysOnTop)
+  const minimal = useSettingsStore((s) => s.settings.ui.minimal)
+  const setMinimal = useSettingsStore((s) => s.setMinimal)
 
   return (
     <header className="drag flex h-9 shrink-0 select-none items-center justify-between border-b pl-3 pr-1.5">
@@ -32,6 +34,13 @@ export function TitleBar() {
         </button>
         <button className={btnClass} title="切换深浅色" onClick={toggleDark}>
           {dark ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+        </button>
+        <button
+          className={cn(btnClass, minimal && 'bg-accent text-accent-foreground')}
+          title={minimal ? '退出极简模式' : '极简模式'}
+          onClick={() => void setMinimal(!minimal)}
+        >
+          {minimal ? <Maximize2 className="h-3.5 w-3.5" /> : <Minimize2 className="h-3.5 w-3.5" />}
         </button>
         <button className={btnClass} title="最小化" onClick={() => window.api.minimizeWindow()}>
           <Minus className="h-3.5 w-3.5" />

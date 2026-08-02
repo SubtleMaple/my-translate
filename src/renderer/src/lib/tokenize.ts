@@ -41,3 +41,17 @@ export function wordList(text: string): string[] {
   }
   return [...set]
 }
+
+/**
+ * 按单词序号（第 start..end 个单词，含端点）取原始词形并空格连接成短语
+ * 序号越界时自动收敛到有效范围；空文本返回空串
+ */
+export function phraseByWordIndex(text: string, start: number, end: number): string {
+  const words = tokenize(text)
+    .filter((t): t is WordToken => t.type === 'word')
+    .map((t) => t.text)
+  if (words.length === 0) return ''
+  const from = Math.max(0, Math.min(start, words.length - 1))
+  const to = Math.max(from, Math.min(end, words.length - 1))
+  return words.slice(from, to + 1).join(' ')
+}

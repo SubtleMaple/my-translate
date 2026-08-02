@@ -1,6 +1,12 @@
 import { create } from 'zustand'
 
-import { DEFAULT_SETTINGS, type AppSettings, type LlmSettings, type TestConnectionResult } from '@shared/types'
+import {
+  DEFAULT_SETTINGS,
+  type ApiType,
+  type AppSettings,
+  type LlmSettings,
+  type TestConnectionResult
+} from '@shared/types'
 
 type SettingsState = {
   settings: AppSettings
@@ -8,9 +14,13 @@ type SettingsState = {
   testing: boolean
   load: () => Promise<void>
   saveLlm: (llm: LlmSettings) => Promise<void>
+  /** 切换 API 类型并立即持久化（两种类型配置独立保存） */
+  setLlmType: (type: ApiType) => Promise<void>
   testConnection: () => Promise<TestConnectionResult>
   setAlwaysOnTop: (flag: boolean) => Promise<void>
   setOpacity: (value: number) => Promise<void>
+  /** 极简模式开关（持久化，立即生效） */
+  setMinimal: (flag: boolean) => Promise<void>
   /** 托盘菜单切换置顶时，主进程广播同步 */
   syncAlwaysOnTop: (flag: boolean) => void
 }
@@ -27,6 +37,11 @@ export const useSettingsStore = create<SettingsState>((set) => ({
 
   saveLlm: async (llm) => {
     const next = await window.api.setSettings({ llm })
+    set({ settings: next })
+  },
+
+  setLlmType: async (type) => {
+    const next = await window.api.setSettings({ llm: { type } })
     set({ settings: next })
   },
 
@@ -52,6 +67,13 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       settings: { ...state.settings, window: { ...state.settings.window, opacity: value } }
     }))
     await window.api.setOpacity(value)
+  },
+
+  setMinimal: async (flag) => {
+    set((state) => ({
+      settings: { ...state.settings, ui: { ...state.settings.ui, minimal: flag } }
+    }))
+    await window.api.setSettings({ ui: { minimal: flag } })
   },
 
   syncAlwaysOnTop: (flag) => {

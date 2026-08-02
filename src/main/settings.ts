@@ -3,11 +3,13 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from '
 import { dirname, join } from 'node:path'
 
 import { AppSettings, DEFAULT_SETTINGS, DeepPartial } from '../shared/types'
+import { normalizeLlmShape } from '../shared/llm'
 
 /**
  * 自写 JSON 配置存储（替代 electron-store，保持 CJS 单模块体系）
  * - 位置：userData/settings.json
  * - 写策略：内存缓存 + 300ms 防抖 + 原子写（tmp → rename），退出前 flushSettings 强制落盘
+ * - 迁移：loadSettings 读盘后规范化（R1：llm 平铺结构 → 嵌套 openai/anthropic，见 shared/llm.ts）
  */
 
 let cache: AppSettings | null = null
@@ -41,7 +43,7 @@ export function loadSettings(): AppSettings {
   try {
     if (existsSync(p)) {
       const raw = JSON.parse(readFileSync(p, 'utf-8'))
-      merged = deepMerge(DEFAULT_SETTINGS, raw)
+      merged = deepMerge(DEFAULT_SETTINGS, normalizeLlmShape(raw))
     }
   } catch {
     // 文件损坏：备份后用默认值，不阻塞启动

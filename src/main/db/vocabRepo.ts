@@ -6,7 +6,7 @@ import { markDirty } from './persist'
  * 生词表 CRUD（全部变更必须 markDirty 触发落盘）
  */
 
-const SELECT_COLUMNS = `id, word, word_lower, phonetic, pos, brief, detail, note, status, context_sentence, fail_reason, created_at, updated_at`
+const SELECT_COLUMNS = `id, word, word_lower, phonetic, pos, brief, detail, note, status, context_sentence, fail_reason, count, created_at, updated_at`
 
 function toVocabEntry(row: unknown[]): VocabEntry {
   const [
@@ -21,6 +21,7 @@ function toVocabEntry(row: unknown[]): VocabEntry {
     status,
     contextSentence,
     failReason,
+    count,
     createdAt,
     updatedAt
   ] = row as unknown[]
@@ -35,6 +36,7 @@ function toVocabEntry(row: unknown[]): VocabEntry {
     status: String(status ?? 'pending') as VocabStatus,
     contextSentence: String(contextSentence ?? ''),
     failReason: String(failReason ?? ''),
+    count: Number(count ?? 1),
     createdAt: Number(createdAt),
     updatedAt: Number(updatedAt)
   }
@@ -55,7 +57,12 @@ export function listVocab(query: VocabQuery = {}): VocabEntry[] {
     params.push(term, term, term, term)
   }
   const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : ''
-  const order = query.sortBy === 'alpha' ? 'ORDER BY word_lower ASC' : 'ORDER BY created_at DESC, id DESC'
+  const order =
+    query.sortBy === 'alpha'
+      ? 'ORDER BY word_lower ASC'
+      : query.sortBy === 'count'
+        ? 'ORDER BY count DESC, updated_at DESC'
+        : 'ORDER BY created_at DESC, id DESC'
 
   const stmt = db.prepare(`SELECT ${SELECT_COLUMNS} FROM vocabulary ${where} ${order}`)
   stmt.bind(params)
@@ -109,10 +116,15 @@ export function addVocab(words: string[], contextSentence: string): VocabAddResu
       result.added.push(word)
       result.addedIds.push(Number(db.exec('SELECT last_insert_rowid()')[0].values[0][0]))
     } else {
+      // 已存在：不新建记录，出现次数 +1 并刷新更新时间
+      db.run(
+        'UPDATE vocabulary SET count = count + 1, updated_at = ? WHERE word_lower = ?',
+        [now, lower]
+      )
       result.existed.push(word)
     }
   }
-  if (result.added.length > 0) markDirty()
+  if (result.added.length > 0 || result.existed.length > 0) markDirty()
   return result
 }
 

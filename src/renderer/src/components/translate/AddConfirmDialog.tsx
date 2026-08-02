@@ -11,22 +11,23 @@ import {
   DialogHeader,
   DialogTitle
 } from '@/components/ui/dialog'
-import { tokenize } from '@/lib/tokenize'
+import { phraseByWordIndex, tokenize } from '@/lib/tokenize'
 import { useTranslateStore } from '@/stores/translateStore'
 
 /**
  * 加入生词本二次确认
- * 确认后立即写入本地数据库（详情生成管线在 Phase 5 接入）
+ * 条目 = 点击选中的单词 + 拖拽选中的短语（整段一条）；确认后立即写入本地数据库
  */
 export function AddConfirmDialog() {
   const confirmOpen = useTranslateStore((s) => s.confirmOpen)
   const closeConfirm = useTranslateStore((s) => s.closeConfirm)
   const input = useTranslateStore((s) => s.input)
   const selectedWords = useTranslateStore((s) => s.selectedWords)
+  const phraseRange = useTranslateStore((s) => s.phraseRange)
   const adding = useTranslateStore((s) => s.adding)
   const addToVocab = useTranslateStore((s) => s.addToVocab)
 
-  // 按原文顺序展示选中的词
+  // 按原文顺序展示选中的单词
   const words = useMemo(
     () =>
       tokenize(input)
@@ -35,11 +36,19 @@ export function AddConfirmDialog() {
     [input, selectedWords]
   )
 
+  // 拖拽选中的短语（整段一条）
+  const phrase = useMemo(
+    () => (phraseRange ? phraseByWordIndex(input, phraseRange.start, phraseRange.end) : null),
+    [input, phraseRange]
+  )
+
+  const itemCount = words.length + (phrase ? 1 : 0)
+
   const onConfirm = async () => {
     const result = await addToVocab()
     if (!result) return
     const existedTip =
-      result.existed.length > 0 ? `，${result.existed.length} 个已存在已跳过` : ''
+      result.existed.length > 0 ? `，${result.existed.length} 个已存在（次数 +1）` : ''
     toast.success(`已加入 ${result.added.length} 个生词${existedTip}，正在生成详情…`)
   }
 
@@ -54,7 +63,7 @@ export function AddConfirmDialog() {
         <DialogHeader>
           <DialogTitle>加入生词本</DialogTitle>
           <DialogDescription>
-            以下单词将逐词生成音标、释义、例句等详细信息。确认加入？
+            以下单词/短语将逐条生成音标、释义、例句等详细信息。确认加入？
           </DialogDescription>
         </DialogHeader>
         <div className="flex max-h-40 flex-wrap content-start gap-1.5 overflow-y-auto">
@@ -66,6 +75,12 @@ export function AddConfirmDialog() {
               {w}
             </span>
           ))}
+          {phrase && (
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-2.5 py-0.5 text-sm">
+              {phrase}
+              <span className="text-[10px] font-medium text-primary">短语</span>
+            </span>
+          )}
         </div>
         <DialogFooter>
           <Button variant="outline" disabled={adding} onClick={closeConfirm}>
@@ -73,7 +88,7 @@ export function AddConfirmDialog() {
           </Button>
           <Button disabled={adding} onClick={() => void onConfirm()}>
             {adding && <Loader2 className="h-4 w-4 animate-spin" />}
-            确认加入（{words.length}）
+            确认加入（{itemCount}）
           </Button>
         </DialogFooter>
       </DialogContent>

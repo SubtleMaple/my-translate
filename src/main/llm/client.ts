@@ -1,8 +1,10 @@
+import { getActiveLlm } from '../../shared/llm'
 import type { LlmSettings, TestConnectionResult } from '../../shared/types'
 
 /**
- * OpenAI 兼容 API 客户端（主进程 Node fetch，规避渲染端 CORS）
- * Phase 2 仅提供非流式 chatCompletion + testConnection；流式翻译在 Phase 4 扩展
+ * OpenAI 兼容 + Anthropic messages 双协议客户端（主进程 Node fetch，规避渲染端 CORS）
+ * - chatCompletion 按 LlmSettings.type 分发协议（非流式）
+ * - 流式翻译的协议分支在 translate.ts
  */
 
 export class LlmError extends Error {
@@ -44,44 +46,107 @@ export async function describeHttpError(res: Response): Promise<string> {
   }
 }
 
+async function ensureOk(res: Response): Promise<void> {
+  if (!res.ok) {
+    const e = new LlmError(await describeHttpError(res))
+    e.status = res.status
+    throw e
+  }
+}
+
+/** 从 messages 中提取 system 内容（Anthropic 需作为顶层 system 参数） */
+function extractSystem(messages: ChatMessage[]): { system?: string; rest: ChatMessage[] } {
+  const system = messages.filter((m) => m.role === 'system').map((m) => m.content).join('\n')
+  const rest = messages.filter((m) => m.role !== 'system')
+  return { system: system || undefined, rest }
+}
+
+async function openaiCompletion(
+  settings: LlmSettings,
+  messages: ChatMessage[],
+  maxTokens: number,
+  controller: AbortController
+): Promise<string> {
+  const { config } = getActiveLlm(settings)
+  const url = `${normalizeBaseURL(config.baseURL)}/chat/completions`
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${config.apiKey.trim()}`
+    },
+    body: JSON.stringify({
+      model: config.model.trim(),
+      messages,
+      max_tokens: maxTokens,
+      stream: false
+    }),
+    signal: controller.signal
+  })
+  await ensureOk(res)
+  const data = (await res.json()) as { choices?: { message?: { content?: unknown } }[] }
+  const content = data?.choices?.[0]?.message?.content
+  if (typeof content !== 'string') {
+    throw new LlmError('接口返回格式异常')
+  }
+  return content
+}
+
+async function anthropicCompletion(
+  settings: LlmSettings,
+  messages: ChatMessage[],
+  maxTokens: number,
+  controller: AbortController
+): Promise<string> {
+  const { config } = getActiveLlm(settings)
+  const { system, rest } = extractSystem(messages)
+  const url = `${normalizeBaseURL(config.baseURL)}/messages`
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': config.apiKey.trim(),
+      'anthropic-version': '2023-06-01'
+    },
+    body: JSON.stringify({
+      model: config.model.trim(),
+      max_tokens: maxTokens,
+      system,
+      messages: rest.map((m) => ({ role: m.role, content: m.content })),
+      stream: false
+    }),
+    signal: controller.signal
+  })
+  await ensureOk(res)
+  const data = (await res.json()) as { content?: { type?: string; text?: string }[] }
+  const blocks = data?.content ?? []
+  const text = blocks
+    .filter((b) => b?.type === 'text' && typeof b.text === 'string')
+    .map((b) => b.text as string)
+    .join('')
+  if (!text) {
+    throw new LlmError('接口返回格式异常')
+  }
+  return text
+}
+
 export async function chatCompletion(
   settings: LlmSettings,
   messages: ChatMessage[],
   opts: { maxTokens?: number; timeoutMs?: number } = {}
 ): Promise<string> {
   const { maxTokens = 1024, timeoutMs = 30000 } = opts
-  if (!settings.apiKey.trim()) {
+  const { type, config } = getActiveLlm(settings)
+  if (!config.apiKey.trim()) {
     throw new LlmError('尚未配置 API Key，请先到设置页填写')
   }
-  const url = `${normalizeBaseURL(settings.baseURL)}/chat/completions`
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${settings.apiKey.trim()}`
-      },
-      body: JSON.stringify({
-        model: settings.model.trim(),
-        messages,
-        max_tokens: maxTokens,
-        stream: false
-      }),
-      signal: controller.signal
-    })
-    if (!res.ok) {
-      const e = new LlmError(await describeHttpError(res))
-      e.status = res.status
-      throw e
+    if (type === 'anthropic') {
+      return await anthropicCompletion(settings, messages, maxTokens, controller)
     }
-    const data = (await res.json()) as { choices?: { message?: { content?: unknown } }[] }
-    const content = data?.choices?.[0]?.message?.content
-    if (typeof content !== 'string') {
-      throw new LlmError('接口返回格式异常')
-    }
-    return content
+    return await openaiCompletion(settings, messages, maxTokens, controller)
   } catch (e) {
     if (e instanceof LlmError) throw e
     if ((e as Error).name === 'AbortError') {
@@ -94,7 +159,8 @@ export async function chatCompletion(
 }
 
 export async function testConnection(settings: LlmSettings): Promise<TestConnectionResult> {
-  if (!settings.apiKey.trim()) {
+  const { config } = getActiveLlm(settings)
+  if (!config.apiKey.trim()) {
     return { ok: false, message: '尚未配置 API Key' }
   }
   try {

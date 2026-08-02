@@ -26,12 +26,14 @@ export interface VocabEntry {
   contextSentence: string
   /** 生成失败原因 */
   failReason: string
+  /** 出现次数（重复加入时 +1） */
+  count: number
   /** 毫秒时间戳 */
   createdAt: number
   updatedAt: number
 }
 
-export type VocabSortBy = 'time' | 'alpha'
+export type VocabSortBy = 'time' | 'alpha' | 'count'
 
 export interface VocabQuery {
   search?: string
@@ -49,10 +51,22 @@ export interface VocabAddResult {
 
 // ---------------------------------------------------------------- 设置
 
-export interface LlmSettings {
+/** API 提供商类型：OpenAI 兼容 / Anthropic messages */
+export type ApiType = 'openai' | 'anthropic'
+
+export interface LlmProviderConfig {
   baseURL: string
   apiKey: string
   model: string
+}
+
+export interface LlmSettings {
+  /** 当前生效的提供商类型 */
+  type: ApiType
+  /** OpenAI 兼容配置（Base URL 需以 /v1 结尾） */
+  openai: LlmProviderConfig
+  /** Anthropic 配置（messages API，Base URL 以 /v1 结尾，如 https://api.anthropic.com/v1） */
+  anthropic: LlmProviderConfig
 }
 
 export interface WindowBounds {
@@ -74,22 +88,30 @@ export type ThemeMode = 'light' | 'dark' | 'system'
 export interface AppSettings {
   llm: LlmSettings
   window: WindowSettings
-  ui: { theme: ThemeMode }
+  ui: { theme: ThemeMode; minimal: boolean }
   vocab: { sortBy: VocabSortBy }
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
   llm: {
-    baseURL: 'https://api.openai.com/v1',
-    apiKey: '',
-    model: 'gpt-4o-mini'
+    type: 'openai',
+    openai: {
+      baseURL: 'https://api.openai.com/v1',
+      apiKey: '',
+      model: 'gpt-4o-mini'
+    },
+    anthropic: {
+      baseURL: 'https://api.anthropic.com/v1',
+      apiKey: '',
+      model: 'claude-sonnet-4-20250514'
+    }
   },
   window: {
     alwaysOnTop: false,
     opacity: 1.0,
     bounds: null
   },
-  ui: { theme: 'system' },
+  ui: { theme: 'system', minimal: false },
   vocab: { sortBy: 'time' }
 }
 

@@ -40,6 +40,9 @@ export function VocabCard({ entry }: { entry: VocabEntry }) {
             {entry.status === 'failed' && (
               <Badge variant="destructive">失败</Badge>
             )}
+            <span className="rounded-full bg-secondary/70 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+              ×{entry.count}
+            </span>
             <span className="text-[11px] text-muted-foreground">
               {formatRelativeTime(entry.createdAt)}
             </span>
