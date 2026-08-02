@@ -1,7 +1,13 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 
 import { IPC } from '../shared/ipc'
-import type { RendererApi, VocabQuery } from '../shared/types'
+import type {
+  RendererApi,
+  TranslateChunkPayload,
+  TranslateDonePayload,
+  TranslateErrorPayload,
+  VocabQuery
+} from '../shared/types'
 
 /**
  * 渲染进程唯一能力入口：window.api
@@ -16,6 +22,24 @@ const api: RendererApi = {
 
   // ---------- llm ----------
   testConnection: () => ipcRenderer.invoke(IPC.LlmTestConnection),
+  translate: (requestId, text) => ipcRenderer.invoke(IPC.LlmTranslate, requestId, text),
+  abortTranslate: (requestId) => ipcRenderer.invoke(IPC.LlmTranslateAbort, requestId),
+  onTranslateEvent: (cb) => {
+    const onChunk = (_e: IpcRendererEvent, p: TranslateChunkPayload) =>
+      cb({ type: 'chunk', requestId: p.requestId, delta: p.delta })
+    const onDone = (_e: IpcRendererEvent, p: TranslateDonePayload) =>
+      cb({ type: 'done', requestId: p.requestId, fullText: p.fullText })
+    const onError = (_e: IpcRendererEvent, p: TranslateErrorPayload) =>
+      cb({ type: 'error', requestId: p.requestId, message: p.message })
+    ipcRenderer.on(IPC.LlmTranslateChunk, onChunk)
+    ipcRenderer.on(IPC.LlmTranslateDone, onDone)
+    ipcRenderer.on(IPC.LlmTranslateError, onError)
+    return () => {
+      ipcRenderer.removeListener(IPC.LlmTranslateChunk, onChunk)
+      ipcRenderer.removeListener(IPC.LlmTranslateDone, onDone)
+      ipcRenderer.removeListener(IPC.LlmTranslateError, onError)
+    }
+  },
 
   // ---------- vocab ----------
   listVocab: (query: VocabQuery) => ipcRenderer.invoke(IPC.VocabList, query),

@@ -8,6 +8,7 @@ import { VocabView } from '@/components/vocab/VocabView'
 import { Toaster } from '@/components/ui/sonner'
 import { cn } from '@/lib/utils'
 import { useSettingsStore } from '@/stores/settingsStore'
+import { useTranslateStore } from '@/stores/translateStore'
 import { useUiStore, type AppView } from '@/stores/uiStore'
 
 const NAV_ITEMS: { key: AppView; label: string; icon: typeof Languages }[] = [
@@ -22,6 +23,7 @@ export default function App() {
   const load = useSettingsStore((s) => s.load)
   const loaded = useSettingsStore((s) => s.loaded)
   const syncAlwaysOnTop = useSettingsStore((s) => s.syncAlwaysOnTop)
+  const bindTranslateEvents = useTranslateStore((s) => s.bindEvents)
 
   useEffect(() => {
     void load()
@@ -31,6 +33,11 @@ export default function App() {
   useEffect(() => {
     return window.api.onAlwaysOnTopChanged(syncAlwaysOnTop)
   }, [syncAlwaysOnTop])
+
+  // 订阅翻译流式事件（挂载一次，视图切换不丢失）
+  useEffect(() => {
+    return bindTranslateEvents()
+  }, [bindTranslateEvents])
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">

@@ -17,7 +17,7 @@ export function normalizeBaseURL(u: string): string {
   return u.trim().replace(/\/+$/, '')
 }
 
-async function describeHttpError(res: Response): Promise<string> {
+export async function describeHttpError(res: Response): Promise<string> {
   let detail = ''
   try {
     const j = (await res.json()) as { error?: { message?: string } }

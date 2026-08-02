@@ -121,6 +121,12 @@ export interface TranslateErrorPayload {
   message: string
 }
 
+/** 渲染端统一订阅的翻译事件 */
+export type TranslateEvent =
+  | { type: 'chunk'; requestId: string; delta: string }
+  | { type: 'done'; requestId: string; fullText: string }
+  | { type: 'error'; requestId: string; message: string }
+
 // ---------------------------------------------------------------- 渲染进程可调用的 API（preload 暴露）
 
 export interface RendererApi {
@@ -133,6 +139,11 @@ export interface RendererApi {
 
   // ---- llm ----
   testConnection(): Promise<TestConnectionResult>
+  /** 发起流式翻译，结果经 onTranslateEvent 推送 */
+  translate(requestId: string, text: string): Promise<void>
+  abortTranslate(requestId: string): Promise<void>
+  /** 订阅翻译流式事件；返回取消订阅函数 */
+  onTranslateEvent(cb: (event: TranslateEvent) => void): () => void
 
   // ---- vocab ----
   listVocab(query: VocabQuery): Promise<VocabEntry[]>
@@ -153,8 +164,6 @@ export interface RendererApi {
   /** 订阅置顶状态变化（托盘菜单切换时主进程广播）；返回取消订阅函数 */
   onAlwaysOnTopChanged(cb: (flag: boolean) => void): () => void
 
-  // ---- Phase 4+ 陆续实现，签名先定死 ----
-  // translate(requestId: string, text: string): Promise<void>
-  // abortTranslate(requestId: string): Promise<void>
+  // ---- Phase 5+ 陆续实现，签名先定死 ----
   // regenerateDetail(id: number): Promise<void>
 }

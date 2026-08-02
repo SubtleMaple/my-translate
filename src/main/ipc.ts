@@ -4,6 +4,7 @@ import { IPC } from '../shared/ipc'
 import type { AppSettings, DeepPartial, VocabQuery } from '../shared/types'
 import { getSettings, updateSettings } from './settings'
 import { testConnection } from './llm/client'
+import { abortTranslate, runTranslate } from './llm/translate'
 import { refreshTrayMenu } from './tray'
 import {
   applyAlwaysOnTop,
@@ -54,6 +55,18 @@ export function registerIpcHandlers(): void {
 
   // ---------- llm ----------
   ipcMain.handle(IPC.LlmTestConnection, () => testConnection(getSettings().llm))
+
+  ipcMain.handle(IPC.LlmTranslate, (_e, requestId: string, text: string) => {
+    // 事件流经 webContents.send 推送给发起请求的窗口
+    const win = getMainWindow()
+    void runTranslate(requestId, text, getSettings().llm, {
+      chunk: (delta) => win?.webContents.send(IPC.LlmTranslateChunk, { requestId, delta }),
+      done: (fullText) => win?.webContents.send(IPC.LlmTranslateDone, { requestId, fullText }),
+      error: (message) => win?.webContents.send(IPC.LlmTranslateError, { requestId, message })
+    })
+  })
+
+  ipcMain.handle(IPC.LlmTranslateAbort, (_e, requestId: string) => abortTranslate(requestId))
 
   // ---------- vocab ----------
   ipcMain.handle(IPC.VocabList, (_e, query: VocabQuery = {}) => listVocab(query))
