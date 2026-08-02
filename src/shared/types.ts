@@ -26,12 +26,14 @@ export interface VocabEntry {
   contextSentence: string
   /** 生成失败原因 */
   failReason: string
+  /** 出现次数（重复加入时 +1） */
+  count: number
   /** 毫秒时间戳 */
   createdAt: number
   updatedAt: number
 }
 
-export type VocabSortBy = 'time' | 'alpha'
+export type VocabSortBy = 'time' | 'alpha' | 'count'
 
 export interface VocabQuery {
   search?: string

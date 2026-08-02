@@ -36,6 +36,7 @@ export function VocabToolbar() {
         <SelectContent>
           <SelectItem value="time">最新优先</SelectItem>
           <SelectItem value="alpha">字母 A–Z</SelectItem>
+          <SelectItem value="count">出现次数</SelectItem>
         </SelectContent>
       </Select>
     </div>

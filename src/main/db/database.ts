@@ -34,6 +34,10 @@ const MIGRATIONS: readonly ((db: Database) => void)[] = [
       )
     `)
     db.run('CREATE INDEX IF NOT EXISTS idx_vocab_created_at ON vocabulary(created_at)')
+  },
+  // v2：生词出现次数（重复加入时 count+1，不新建记录）
+  (db) => {
+    db.run('ALTER TABLE vocabulary ADD COLUMN count INTEGER NOT NULL DEFAULT 1')
   }
 ]
 
