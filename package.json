@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "英汉翻译 + 生词本 悬浮窗桌面应用",
+  "author": "my-translate",
   "main": "out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
