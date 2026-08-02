@@ -84,7 +84,10 @@ export function VocabCard({ entry }: { entry: VocabEntry }) {
       </div>
 
       {expanded && (
-        <div className="border-t px-3 pb-3 pt-0">
+        <div
+          className="border-t px-3 pb-3 pt-0"
+          onClick={(e) => e.stopPropagation()}
+        >
           <VocabDetail entry={entry} />
         </div>
       )}
