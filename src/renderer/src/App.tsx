@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useTranslateStore } from '@/stores/translateStore'
 import { useUiStore, type AppView } from '@/stores/uiStore'
+import { useVocabStore } from '@/stores/vocabStore'
 
 const NAV_ITEMS: { key: AppView; label: string; icon: typeof Languages }[] = [
   { key: 'translate', label: '翻译', icon: Languages },
@@ -24,6 +25,7 @@ export default function App() {
   const loaded = useSettingsStore((s) => s.loaded)
   const syncAlwaysOnTop = useSettingsStore((s) => s.syncAlwaysOnTop)
   const bindTranslateEvents = useTranslateStore((s) => s.bindEvents)
+  const bindVocabEvents = useVocabStore((s) => s.bindEvents)
 
   useEffect(() => {
     void load()
@@ -38,6 +40,11 @@ export default function App() {
   useEffect(() => {
     return bindTranslateEvents()
   }, [bindTranslateEvents])
+
+  // 订阅生词数据变更（增删/详情生成完成广播，静默刷新列表）
+  useEffect(() => {
+    return bindVocabEvents()
+  }, [bindVocabEvents])
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
