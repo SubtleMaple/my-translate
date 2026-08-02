@@ -1,0 +1,160 @@
+/**
+ * 主进程 / 渲染进程共享类型契约
+ * 本文件只允许类型与常量，不允许任何运行时依赖
+ */
+
+// ---------------------------------------------------------------- 生词本
+
+export type VocabStatus = 'pending' | 'ready' | 'failed'
+
+export interface VocabEntry {
+  id: number
+  /** 原始选中的词形（保留大小写） */
+  word: string
+  phonetic: string
+  /** 词性 */
+  pos: string
+  /** 简要释义（卡片展示） */
+  brief: string
+  /** 完整 Markdown 详情 */
+  detail: string
+  /** 用户备注 */
+  note: string
+  /** 详情生成状态机：pending=生成中 / ready=完成 / failed=失败可重试 */
+  status: VocabStatus
+  /** 选中该词时的原句 */
+  contextSentence: string
+  /** 生成失败原因 */
+  failReason: string
+  /** 毫秒时间戳 */
+  createdAt: number
+  updatedAt: number
+}
+
+export type VocabSortBy = 'time' | 'alpha'
+
+export interface VocabQuery {
+  search?: string
+  sortBy?: VocabSortBy
+}
+
+export interface VocabAddResult {
+  /** 成功加入（进入详情生成队列）的词 */
+  added: string[]
+  /** 已存在而被跳过的词 */
+  existed: string[]
+}
+
+// ---------------------------------------------------------------- 设置
+
+export interface LlmSettings {
+  baseURL: string
+  apiKey: string
+  model: string
+}
+
+export interface WindowBounds {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export interface WindowSettings {
+  alwaysOnTop: boolean
+  /** 0.5 - 1.0 */
+  opacity: number
+  bounds: WindowBounds | null
+}
+
+export type ThemeMode = 'light' | 'dark' | 'system'
+
+export interface AppSettings {
+  llm: LlmSettings
+  window: WindowSettings
+  ui: { theme: ThemeMode }
+  vocab: { sortBy: VocabSortBy }
+}
+
+export const DEFAULT_SETTINGS: AppSettings = {
+  llm: {
+    baseURL: 'https://api.openai.com/v1',
+    apiKey: '',
+    model: 'gpt-4o-mini'
+  },
+  window: {
+    alwaysOnTop: false,
+    opacity: 1.0,
+    bounds: null
+  },
+  ui: { theme: 'system' },
+  vocab: { sortBy: 'time' }
+}
+
+// ---------------------------------------------------------------- 工具
+
+/** 递归 Partial，用于设置项局部更新 */
+export type DeepPartial<T> = {
+  [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K]
+}
+
+// ---------------------------------------------------------------- LLM
+
+export interface TestConnectionResult {
+  ok: boolean
+  message: string
+}
+
+/** 主进程 → 渲染进程 的翻译流式事件负载 */
+export interface TranslateChunkPayload {
+  requestId: string
+  delta: string
+}
+
+export interface TranslateDonePayload {
+  requestId: string
+  fullText: string
+}
+
+export interface TranslateErrorPayload {
+  requestId: string
+  message: string
+}
+
+// ---------------------------------------------------------------- 渲染进程可调用的 API（preload 暴露）
+
+export interface RendererApi {
+  /** 当前平台 */
+  platform: string
+
+  // ---- settings ----
+  getSettings(): Promise<AppSettings>
+  setSettings(patch: DeepPartial<AppSettings>): Promise<AppSettings>
+
+  // ---- llm ----
+  testConnection(): Promise<TestConnectionResult>
+
+  // ---- vocab ----
+  listVocab(query: VocabQuery): Promise<VocabEntry[]>
+  /** 批量返回已存在（小写归一）的词 */
+  checkWords(words: string[]): Promise<string[]>
+  addVocab(words: string[], contextSentence: string): Promise<VocabAddResult>
+  updateVocabNote(id: number, note: string): Promise<void>
+  deleteVocab(id: number): Promise<void>
+  /** 订阅生词数据变更（增删/详情生成完成等主进程广播）；返回取消订阅函数 */
+  onVocabChanged(cb: () => void): () => void
+
+  // ---- window ----
+  setAlwaysOnTop(flag: boolean): Promise<void>
+  setOpacity(value: number): Promise<void>
+  minimizeWindow(): Promise<void>
+  /** 关闭窗口（实际行为：隐藏到托盘） */
+  closeWindow(): Promise<void>
+  /** 订阅置顶状态变化（托盘菜单切换时主进程广播）；返回取消订阅函数 */
+  onAlwaysOnTopChanged(cb: (flag: boolean) => void): () => void
+
+  // ---- Phase 4+ 陆续实现，签名先定死 ----
+  // translate(requestId: string, text: string): Promise<void>
+  // abortTranslate(requestId: string): Promise<void>
+  // regenerateDetail(id: number): Promise<void>
+}

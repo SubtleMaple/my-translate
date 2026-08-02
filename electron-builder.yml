@@ -1,0 +1,27 @@
+appId: com.mytranslate.app
+productName: My Translate
+directories:
+  output: release
+# electron-builder 会依据 package.json dependencies 自动收集生产依赖 node_modules，
+# files 只需声明构建产物
+files:
+  - out/**
+  - '!**/*.map'
+asar: true
+# 托盘图标 / sql.js wasm 运行时需要以文件形式存在（packaged 后取 process.resourcesPath）
+extraResources:
+  - from: build/tray.ico
+    to: tray.ico
+  - from: node_modules/sql.js/dist/sql-wasm.wasm
+    to: sql-wasm.wasm
+win:
+  target: nsis
+  icon: build/icon.ico
+  artifactName: ${productName}-Setup-${version}.${ext}
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: My Translate
