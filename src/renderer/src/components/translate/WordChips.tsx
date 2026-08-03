@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Check } from 'lucide-react'
-import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -114,15 +113,12 @@ export function WordChips() {
     d.currentIdx = idx
   }
 
-  const handleChipClick = (t: WordToken, existed: boolean) => {
+  const handleChipClick = (t: WordToken) => {
     if (suppressClick.current) {
       suppressClick.current = false
       return
     }
-    if (existed) {
-      toast.info(`「${t.text}」已在生词本中`)
-      return
-    }
+    // 划线只提示「本次已加入」，不拦截：再次加入走 count+1
     toggleWord(t.text.toLowerCase())
   }
 
@@ -160,25 +156,23 @@ export function WordChips() {
             <button
               key={i}
               type="button"
-              title={existed ? `「${t.text}」已在生词本，拖选短语可重复加入（次数 +1）` : undefined}
+              title={existed ? `「${t.text}」已在本次句子中加入，可再次加入（次数 +1）` : undefined}
               className={cn(
                 'mx-0.5 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 transition-colors',
                 inRange && 'border-primary bg-primary text-primary-foreground',
                 !inRange &&
-                  (existed
-                    ? 'cursor-default border-transparent bg-muted text-muted-foreground/70 line-through decoration-muted-foreground/40'
-                    : selected
-                      ? 'cursor-pointer border-primary bg-primary text-primary-foreground'
+                  (selected
+                    ? 'cursor-pointer border-primary bg-primary text-primary-foreground'
+                    : existed
+                      ? 'cursor-pointer border-border bg-secondary/60 text-muted-foreground/70 line-through decoration-muted-foreground/40 hover:bg-accent'
                       : 'cursor-pointer border-border bg-secondary/60 hover:bg-accent')
               )}
-              onPointerDown={(e) => {
-                if (!existed) startDrag(idx, e)
-              }}
+              onPointerDown={(e) => startDrag(idx, e)}
               onPointerEnter={() => updateHover(idx)}
-              onClick={() => handleChipClick(t, existed)}
+              onClick={() => handleChipClick(t)}
             >
               {t.text}
-              {existed && !inRange && <Check className="h-3 w-3" />}
+              {existed && !inRange && !selected && <Check className="h-3 w-3" />}
             </button>
           )
         })}

@@ -43,7 +43,6 @@ const api: RendererApi = {
 
   // ---------- vocab ----------
   listVocab: (query: VocabQuery) => ipcRenderer.invoke(IPC.VocabList, query),
-  checkWords: (words) => ipcRenderer.invoke(IPC.VocabCheckWords, words),
   addVocab: (words, contextSentence) => ipcRenderer.invoke(IPC.VocabAdd, words, contextSentence),
   updateVocabNote: (id, note) => ipcRenderer.invoke(IPC.VocabUpdateNote, id, note),
   deleteVocab: (id) => ipcRenderer.invoke(IPC.VocabDelete, id),

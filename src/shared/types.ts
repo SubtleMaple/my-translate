@@ -179,8 +179,6 @@ export interface RendererApi {
 
   // ---- vocab ----
   listVocab(query: VocabQuery): Promise<VocabEntry[]>
-  /** 批量返回已存在（小写归一）的词 */
-  checkWords(words: string[]): Promise<string[]>
   addVocab(words: string[], contextSentence: string): Promise<VocabAddResult>
   updateVocabNote(id: number, note: string): Promise<void>
   deleteVocab(id: number): Promise<void>

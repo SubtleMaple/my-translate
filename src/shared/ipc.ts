@@ -19,7 +19,6 @@ export const IPC = {
 
   // ---------- vocab ----------
   VocabList: 'vocab:list',
-  VocabCheckWords: 'vocab:check-words',
   VocabAdd: 'vocab:add',
   VocabUpdateNote: 'vocab:update-note',
   VocabDelete: 'vocab:delete',

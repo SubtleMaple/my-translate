@@ -15,7 +15,6 @@ import {
 } from './window'
 import {
   addVocab,
-  checkWords,
   deleteVocab,
   listVocab,
   updateVocabNote
@@ -83,8 +82,6 @@ export function registerIpcHandlers(): void {
 
   // ---------- vocab ----------
   ipcMain.handle(IPC.VocabList, (_e, query: VocabQuery = {}) => listVocab(query))
-
-  ipcMain.handle(IPC.VocabCheckWords, (_e, words: string[]) => checkWords(words))
 
   ipcMain.handle(IPC.VocabAdd, (_e, words: string[], contextSentence: string) => {
     const result = addVocab(words, contextSentence)

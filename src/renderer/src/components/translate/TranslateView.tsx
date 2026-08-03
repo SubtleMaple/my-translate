@@ -53,7 +53,8 @@ export function TranslateView() {
   }
 
   return (
-    <div className="flex h-full flex-col gap-3 p-3">
+    // 整页随内容增高，由外层 main 滚动（不锁 h-full，长译文不会被挤出窗口）
+    <div className="flex flex-col gap-3 p-3">
       <Textarea
         placeholder="输入或粘贴英文句子，点击「翻译」…"
         value={displayValue}
@@ -96,7 +97,7 @@ export function TranslateView() {
       {!minimal && input.trim() && <WordChips />}
       {!minimal && <AddConfirmDialog />}
 
-      <div className="flex-1 overflow-y-auto">
+      <div>
         {status === 'loading' && (
           <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
