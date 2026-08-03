@@ -3,6 +3,7 @@ import { create } from 'zustand'
 import type { TranslateEvent, VocabAddResult } from '@shared/types'
 import { getActiveLlm } from '@shared/llm'
 import { detectInjection } from '@shared/injection'
+import { checkOutputForInjection } from '@shared/outputCheck'
 import { phraseByWordIndex, tokenize } from '@/lib/tokenize'
 import { useSettingsStore } from './settingsStore'
 
@@ -24,6 +25,8 @@ interface TranslateState {
   output: string
   error: string
   requestId: string | null
+  /** 输出侧校验标记：输出疑似执行了输入中的指令（显示警告条，不拦截） */
+  outputWarning: boolean
   /** 选中的单词（小写归一） */
   selectedWords: Set<string>
   /** 拖拽选中的短语（整段作为一条生词记录） */
@@ -53,6 +56,7 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
   output: '',
   error: '',
   requestId: null,
+  outputWarning: false,
   selectedWords: new Set(),
   phraseRange: null,
   existedWords: new Set(),
@@ -60,10 +64,15 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
   adding: false,
 
   setInput: (value) => {
-    // 输入变化后分词随之变化：清空选择、短语与本次已加入标记
-    set({ input: value, selectedWords: new Set(), phraseRange: null, existedWords: new Set() })
+    // 输入变化后分词随之变化：清空选择、短语、本次已加入标记与输出警告
+    set({
+      input: value,
+      selectedWords: new Set(),
+      phraseRange: null,
+      existedWords: new Set(),
+      outputWarning: false
+    })
   },
-
   translate: async () => {
     const text = get().input.trim()
     const status = get().status
@@ -91,6 +100,7 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
       output: '',
       error: '',
       requestId,
+      outputWarning: false,
       selectedWords: new Set(),
       phraseRange: null
       // existedWords 不重置：本次句子的「已加入」划线跨翻译保留
@@ -113,6 +123,7 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
       error: '',
       status: 'idle',
       requestId: null,
+      outputWarning: false,
       selectedWords: new Set(),
       phraseRange: null,
       existedWords: new Set()
@@ -167,7 +178,9 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
     if (e.type === 'chunk') {
       set((s) => ({ output: s.output + e.delta, status: 'streaming' }))
     } else if (e.type === 'done') {
-      set({ status: 'idle', output: e.fullText, requestId: null })
+      // 输出侧校验：中文为主的输入未整段回显 → 疑似执行了输入中的指令（仅警告，不拦截）
+      const warning = checkOutputForInjection(get().input, e.fullText).flagged
+      set({ status: 'idle', output: e.fullText, requestId: null, outputWarning: warning })
       // 划线只反映「本次句子已加入」，不查询词库历史（历史词仍可点击加入 count+1）
     } else {
       set({ status: 'error', error: e.message, requestId: null })

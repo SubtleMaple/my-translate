@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { AlertCircle, Loader2, Sparkles } from 'lucide-react'
+import { AlertCircle, AlertTriangle, Loader2, Sparkles } from 'lucide-react'
 
 import { AddConfirmDialog } from '@/components/translate/AddConfirmDialog'
 import { WordChips } from '@/components/translate/WordChips'
@@ -15,6 +15,7 @@ export function TranslateView() {
   const setInput = useTranslateStore((s) => s.setInput)
   const status = useTranslateStore((s) => s.status)
   const output = useTranslateStore((s) => s.output)
+  const outputWarning = useTranslateStore((s) => s.outputWarning)
   const error = useTranslateStore((s) => s.error)
   const translate = useTranslateStore((s) => s.translate)
   const stop = useTranslateStore((s) => s.stop)
@@ -85,6 +86,13 @@ export function TranslateView() {
           <div className="flex shrink-0 items-center gap-1 border-b bg-destructive/5 px-3 py-1.5 text-xs text-destructive">
             <AlertCircle className="h-3.5 w-3.5 shrink-0" />
             <span className="min-w-0 truncate">{error}</span>
+          </div>
+        )}
+
+        {outputWarning && (
+          <div className="flex shrink-0 items-center gap-1 border-b bg-amber-500/10 px-3 py-1.5 text-xs text-amber-600 dark:text-amber-400">
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+            <span className="min-w-0">输出疑似执行了输入中的指令，请谨慎参考</span>
           </div>
         )}
 
@@ -171,6 +179,12 @@ export function TranslateView() {
 
         {output && (
           <div className="rounded-lg border bg-card p-3">
+            {outputWarning && (
+              <div className="mb-2 flex items-center gap-1 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-600 dark:text-amber-400">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                输出疑似执行了输入中的指令，请谨慎参考
+              </div>
+            )}
             <div className="mb-1.5 flex items-center gap-1 text-xs font-medium text-muted-foreground">
               <Sparkles className="h-3.5 w-3.5" />
               译文
