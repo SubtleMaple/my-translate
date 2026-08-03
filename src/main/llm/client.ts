@@ -2,9 +2,11 @@ import { getActiveLlm } from '../../shared/llm'
 import type { LlmSettings, TestConnectionResult } from '../../shared/types'
 
 /**
- * OpenAI 兼容 + Anthropic messages 双协议客户端（主进程 Node fetch，规避渲染端 CORS）
+ * OpenAI 兼容 + Anthropic messages 双协议客户端（主进程 HTTP，规避渲染端 CORS）
  * - chatCompletion 按 LlmSettings.type 分发协议（非流式）
  * - 流式翻译的协议分支在 translate.ts
+ * - fetch 可注入：默认 Node 全局 fetch（便于纯 node 测试）；
+ *   Electron 启动时经 setFetchImpl 切换为 net.fetch（Chromium 网络栈，跟随系统代理）
  */
 
 export class LlmError extends Error {
@@ -15,6 +17,21 @@ export class LlmError extends Error {
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant'
   content: string
+}
+
+/** 注入的 fetch 实现（默认 Node undici 全局 fetch） */
+let fetchImpl: typeof fetch = (input, init) => globalThis.fetch(input, init)
+
+export function setFetchImpl(f: typeof fetch): void {
+  fetchImpl = f
+}
+
+/** 统一的 HTTP 入口：主进程 LLM 调用全部走这里 */
+export function httpFetch(
+  input: Parameters<typeof fetch>[0],
+  init?: Parameters<typeof fetch>[1]
+): Promise<Response> {
+  return fetchImpl(input, init)
 }
 
 /** 统一去掉尾部斜杠，是否包含 /v1 由用户在设置中自行保证 */
@@ -69,7 +86,7 @@ async function openaiCompletion(
 ): Promise<string> {
   const { config } = getActiveLlm(settings)
   const url = `${normalizeBaseURL(config.baseURL)}/chat/completions`
-  const res = await fetch(url, {
+  const res = await httpFetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -101,11 +118,13 @@ async function anthropicCompletion(
   const { config } = getActiveLlm(settings)
   const { system, rest } = extractSystem(messages)
   const url = `${normalizeBaseURL(config.baseURL)}/messages`
-  const res = await fetch(url, {
+  const res = await httpFetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      // 双认证头：官方 Anthropic 兼容 x-api-key；第三方网关（如 DeepSeek /anthropic）认 Authorization Bearer
       'x-api-key': config.apiKey.trim(),
+      Authorization: `Bearer ${config.apiKey.trim()}`,
       'anthropic-version': '2023-06-01'
     },
     body: JSON.stringify({
@@ -124,9 +143,8 @@ async function anthropicCompletion(
     .filter((b) => b?.type === 'text' && typeof b.text === 'string')
     .map((b) => b.text as string)
     .join('')
-  if (!text) {
-    throw new LlmError('接口返回格式异常')
-  }
+  // 允许空文本：思考型模型（如 deepseek-v4-flash）可能只返回 thinking 块，
+  // 响应结构有效即视为请求成功（连接测试通过）；业务侧（详情生成）另有内容校验
   return text
 }
 
@@ -159,13 +177,14 @@ export async function chatCompletion(
 }
 
 export async function testConnection(settings: LlmSettings): Promise<TestConnectionResult> {
-  const { config } = getActiveLlm(settings)
+  const { type, config } = getActiveLlm(settings)
   if (!config.apiKey.trim()) {
     return { ok: false, message: '尚未配置 API Key' }
   }
   try {
     await chatCompletion(settings, [{ role: 'user', content: 'Hi' }], {
-      maxTokens: 1,
+      // anthropic 思考型模型会先消耗 thinking token，预算太小可能整个响应全是 thinking 块
+      maxTokens: type === 'anthropic' ? 32 : 1,
       timeoutMs: 15000
     })
     return { ok: true, message: '连接成功，模型可用' }

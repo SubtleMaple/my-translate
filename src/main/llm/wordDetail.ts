@@ -1,4 +1,5 @@
 import type { LlmSettings } from '../../shared/types'
+import { getActiveLlm } from '../../shared/llm'
 import { chatCompletion, LlmError } from './client'
 import { buildDetailSystemPrompt, buildDetailUserPrompt } from './prompts'
 
@@ -148,13 +149,15 @@ export async function generateWordDetail(
   contextSentence: string,
   settings: LlmSettings
 ): Promise<GeneratedDetail> {
+  // anthropic 思考型模型需预留 thinking 预算，max_tokens 加大
+  const maxTokens = getActiveLlm(settings).type === 'anthropic' ? 2000 : 800
   const content = await chatCompletion(
     settings,
     [
       { role: 'system', content: buildDetailSystemPrompt() },
       { role: 'user', content: buildDetailUserPrompt(word, contextSentence) }
     ],
-    { maxTokens: 800, timeoutMs: 60_000 }
+    { maxTokens, timeoutMs: 60_000 }
   )
 
   const fields = parseDetailJson(content)

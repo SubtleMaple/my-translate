@@ -5,7 +5,8 @@ import {
   type ApiType,
   type AppSettings,
   type LlmSettings,
-  type TestConnectionResult
+  type TestConnectionResult,
+  type VocabSortBy
 } from '@shared/types'
 
 type SettingsState = {
@@ -21,6 +22,8 @@ type SettingsState = {
   setOpacity: (value: number) => Promise<void>
   /** 极简模式开关（持久化，立即生效） */
   setMinimal: (flag: boolean) => Promise<void>
+  /** 生词本排序偏好（乐观更新 + 持久化，保持本地与主进程一致） */
+  setVocabSortBy: (sortBy: VocabSortBy) => Promise<void>
   /** 托盘菜单切换置顶时，主进程广播同步 */
   syncAlwaysOnTop: (flag: boolean) => void
 }
@@ -74,6 +77,13 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       settings: { ...state.settings, ui: { ...state.settings.ui, minimal: flag } }
     }))
     await window.api.setSettings({ ui: { minimal: flag } })
+  },
+
+  setVocabSortBy: async (sortBy) => {
+    set((state) => ({
+      settings: { ...state.settings, vocab: { ...state.settings.vocab, sortBy } }
+    }))
+    await window.api.setSettings({ vocab: { sortBy } })
   },
 
   syncAlwaysOnTop: (flag) => {

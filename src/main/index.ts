@@ -1,4 +1,4 @@
-import { app, dialog } from 'electron'
+import { app, dialog, net } from 'electron'
 
 import { registerIpcHandlers } from './ipc'
 import { flushSettings, loadSettings } from './settings'
@@ -7,6 +7,7 @@ import { createMainWindow, setQuitting, showMainWindow } from './window'
 import { initDatabase } from './db/database'
 import { flushDatabase as flushDbFile } from './db/persist'
 import { enqueueAllPending } from './services/vocabService'
+import { setFetchImpl } from './llm/client'
 
 // 单实例锁：第二个实例启动时聚焦已有窗口
 const gotLock = app.requestSingleInstanceLock()
@@ -18,6 +19,11 @@ if (!gotLock) {
   })
 
   app.whenReady().then(async () => {
+    // LLM 请求改走 Chromium 网络栈：自动跟随系统代理（Clash 普通代理模式可用），
+    // 未配置代理时直连（TUN 透明代理模式同样不受影响）
+    setFetchImpl((input, init) =>
+      net.fetch(input as Parameters<typeof net.fetch>[0], init as Parameters<typeof net.fetch>[1])
+    )
     loadSettings()
     try {
       const { needFlush } = await initDatabase()
