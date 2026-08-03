@@ -2,7 +2,7 @@ import { create } from 'zustand'
 
 import type { TranslateEvent, VocabAddResult } from '@shared/types'
 import { getActiveLlm } from '@shared/llm'
-import { phraseByWordIndex, tokenize, wordList } from '@/lib/tokenize'
+import { phraseByWordIndex, tokenize } from '@/lib/tokenize'
 import { useSettingsStore } from './settingsStore'
 
 export type TranslateStatus = 'idle' | 'loading' | 'streaming' | 'error'
@@ -27,7 +27,7 @@ interface TranslateState {
   selectedWords: Set<string>
   /** 拖拽选中的短语（整段作为一条生词记录） */
   phraseRange: PhraseRange | null
-  /** 已收录生词（小写归一），chip 弱化展示 */
+  /** 本次句子中已加入生词本/词库的词（小写归一），划线提示但仍可点击再次加入（count+1） */
   existedWords: Set<string>
   confirmOpen: boolean
   adding: boolean
@@ -59,7 +59,7 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
   adding: false,
 
   setInput: (value) => {
-    // 输入变化后分词随之变化：清空选择、短语与已收录标记
+    // 输入变化后分词随之变化：清空选择、短语与本次已加入标记
     set({ input: value, selectedWords: new Set(), phraseRange: null, existedWords: new Set() })
   },
 
@@ -81,8 +81,8 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
       error: '',
       requestId,
       selectedWords: new Set(),
-      phraseRange: null,
-      existedWords: new Set()
+      phraseRange: null
+      // existedWords 不重置：本次句子的「已加入」划线跨翻译保留
     })
     await window.api.translate(requestId, text)
   },
@@ -157,11 +157,7 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
       set((s) => ({ output: s.output + e.delta, status: 'streaming' }))
     } else if (e.type === 'done') {
       set({ status: 'idle', output: e.fullText, requestId: null })
-      // 翻译完成后批量标记已收录词
-      const words = wordList(get().input)
-      void window.api.checkWords(words).then((found) => {
-        set((s) => ({ existedWords: new Set([...s.existedWords, ...found]) }))
-      })
+      // 划线只反映「本次句子已加入」，不查询词库历史（历史词仍可点击加入 count+1）
     } else {
       set({ status: 'error', error: e.message, requestId: null })
     }

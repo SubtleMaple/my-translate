@@ -74,25 +74,6 @@ export function listVocab(query: VocabQuery = {}): VocabEntry[] {
   return rows
 }
 
-/** 返回已存在（小写归一）的词子集 */
-export function checkWords(words: string[]): string[] {
-  const lowers = [...new Set(words.map((w) => w.trim().toLowerCase()).filter(Boolean))]
-  if (lowers.length === 0) return []
-  const db = getDb()
-  const placeholders = lowers.map(() => '?').join(', ')
-  const stmt = db.prepare(
-    `SELECT word_lower FROM vocabulary WHERE word_lower IN (${placeholders})`
-  )
-  stmt.bind(lowers)
-  const found: string[] = []
-  while (stmt.step()) {
-    const row = stmt.get() as unknown[]
-    found.push(String(row[0]))
-  }
-  stmt.free()
-  return found
-}
-
 export function addVocab(words: string[], contextSentence: string): VocabAddResult {
   const db = getDb()
   const result: VocabAddResult = { added: [], existed: [], addedIds: [] }
