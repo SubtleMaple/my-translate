@@ -23,6 +23,11 @@ const TYPE_HINTS: Record<ApiType, string> = {
   anthropic: 'Anthropic messages API（Claude 系列）。Base URL 以 /v1 结尾，如 https://api.anthropic.com/v1。'
 }
 
+const THINKING_HINTS: Record<'auto' | 'off', string> = {
+  auto: '跟随模型默认（思考型模型默认开启思考）',
+  off: '关闭思考模式（deepseek-v4-flash 等思考模型，响应更快更省）'
+}
+
 const TYPE_PLACEHOLDERS: Record<ApiType, { baseURL: string; apiKey: string; model: string }> = {
   openai: { baseURL: 'https://api.openai.com/v1', apiKey: 'sk-...', model: 'gpt-4o-mini' },
   anthropic: {
@@ -41,6 +46,7 @@ export function SettingsView() {
   const [baseURL, setBaseURL] = useState('')
   const [apiKey, setApiKey] = useState('')
   const [model, setModel] = useState('')
+  const [thinking, setThinking] = useState<'auto' | 'off'>('auto')
   useEffect(() => {
     if (loaded) {
       setType(settings.llm.type)
@@ -48,6 +54,7 @@ export function SettingsView() {
       setBaseURL(c.baseURL)
       setApiKey(c.apiKey)
       setModel(c.model)
+      setThinking(c.thinking)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loaded])
@@ -55,7 +62,8 @@ export function SettingsView() {
   const currentDraft = (): LlmProviderConfig => ({
     baseURL: baseURL.trim(),
     apiKey: apiKey.trim(),
-    model: model.trim()
+    model: model.trim(),
+    thinking
   })
 
   const onTypeChange = (t: ApiType) => {
@@ -65,6 +73,7 @@ export function SettingsView() {
     setBaseURL(stored.baseURL)
     setApiKey(stored.apiKey)
     setModel(stored.model)
+    setThinking(stored.thinking)
     // 切换即持久化生效（当前草稿归属另一类型，不随切换保存）
     void setLlmType(t).then(() => toast.success(`已切换到 ${TYPE_LABELS[t]} API`))
   }
@@ -140,6 +149,19 @@ export function SettingsView() {
               value={model}
               onChange={(e) => setModel(e.target.value)}
             />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label>思考模式</Label>
+            <Select value={thinking} onValueChange={(v) => setThinking(v as 'auto' | 'off')}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="auto">自动（默认）</SelectItem>
+                <SelectItem value="off">关闭</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">{THINKING_HINTS[thinking]}</p>
           </div>
           <div className="flex gap-2 pt-1">
             <Button size="sm" onClick={onSave}>
