@@ -57,7 +57,7 @@ export default function App() {
   return (
     <div className="flex h-screen flex-col overflow-hidden">
       <TitleBar />
-      <main className="flex-1 overflow-y-auto">
+      <main className={cn('flex-1', minimal ? 'overflow-hidden' : 'overflow-y-auto')}>
         {!loaded ? (
           <div className="flex h-full items-center justify-center">
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
