@@ -58,6 +58,12 @@ export interface LlmProviderConfig {
   baseURL: string
   apiKey: string
   model: string
+  /**
+   * 思考模式：'auto'=跟随模型默认（不发送任何参数）；
+   * 'off'=关闭思考模式（OpenAI/Anthropic 格式均发 thinking:{type:"disabled"}，
+   * 适用于 deepseek-v4-flash 等思考型模型，显著加速响应）
+   */
+  thinking: 'auto' | 'off'
 }
 
 export interface LlmSettings {
@@ -98,12 +104,14 @@ export const DEFAULT_SETTINGS: AppSettings = {
     openai: {
       baseURL: 'https://api.openai.com/v1',
       apiKey: '',
-      model: 'gpt-4o-mini'
+      model: 'gpt-4o-mini',
+      thinking: 'auto'
     },
     anthropic: {
       baseURL: 'https://api.anthropic.com/v1',
       apiKey: '',
-      model: 'claude-sonnet-4-20250514'
+      model: 'claude-sonnet-4-20250514',
+      thinking: 'auto'
     }
   },
   window: {

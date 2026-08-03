@@ -1,4 +1,4 @@
-import { describeHttpError, httpFetch, LlmError, normalizeBaseURL } from './client'
+import { describeHttpError, httpFetch, LlmError, normalizeBaseURL, thinkingBodyParam } from './client'
 import { TRANSLATE_SYSTEM_PROMPT } from './prompts'
 import { getActiveLlm } from '../../shared/llm'
 import type { LlmSettings } from '../../shared/types'
@@ -97,7 +97,8 @@ export async function runTranslate(
               max_tokens: ANTHROPIC_STREAM_MAX_TOKENS,
               system: TRANSLATE_SYSTEM_PROMPT,
               messages: [{ role: 'user', content: text }],
-              stream: true
+              stream: true,
+              ...thinkingBodyParam(config)
             }
           : {
               model: config.model.trim(),
@@ -105,7 +106,8 @@ export async function runTranslate(
                 { role: 'system', content: TRANSLATE_SYSTEM_PROMPT },
                 { role: 'user', content: text }
               ],
-              stream: true
+              stream: true,
+              ...thinkingBodyParam(config)
             }
       ),
       signal: controller.signal

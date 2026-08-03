@@ -78,6 +78,11 @@ function extractSystem(messages: ChatMessage[]): { system?: string; rest: ChatMe
   return { system: system || undefined, rest }
 }
 
+/** 思考模式关闭时附加的参数（OpenAI 与 Anthropic 格式实测均认 thinking.type） */
+export function thinkingBodyParam(config: { thinking: 'auto' | 'off' }): Record<string, unknown> {
+  return config.thinking === 'off' ? { thinking: { type: 'disabled' } } : {}
+}
+
 async function openaiCompletion(
   settings: LlmSettings,
   messages: ChatMessage[],
@@ -96,7 +101,8 @@ async function openaiCompletion(
       model: config.model.trim(),
       messages,
       max_tokens: maxTokens,
-      stream: false
+      stream: false,
+      ...thinkingBodyParam(config)
     }),
     signal: controller.signal
   })
@@ -132,7 +138,8 @@ async function anthropicCompletion(
       max_tokens: maxTokens,
       system,
       messages: rest.map((m) => ({ role: m.role, content: m.content })),
-      stream: false
+      stream: false,
+      ...thinkingBodyParam(config)
     }),
     signal: controller.signal
   })
