@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { Loader2, Sparkles } from 'lucide-react'
+import { AlertCircle, Loader2, Sparkles } from 'lucide-react'
 
 import { AddConfirmDialog } from '@/components/translate/AddConfirmDialog'
 import { WordChips } from '@/components/translate/WordChips'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
-import { cn } from '@/lib/utils'
 import { getActiveLlm } from '@shared/llm'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useTranslateStore } from '@/stores/translateStore'
@@ -52,16 +51,70 @@ export function TranslateView() {
     clear()
   }
 
+  // 极简模式：整个客户区 = 操作栏 + 全幅文本框（随窗口缩放自适应），无嵌套容器
+  if (minimal) {
+    return (
+      <div className="flex h-full flex-col">
+        <div className="flex h-9 shrink-0 items-center gap-1 border-b px-2">
+          <Button size="sm" disabled={busy || !input.trim()} onClick={doTranslate}>
+            {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            {busy ? '翻译中…' : '翻译'}
+          </Button>
+          {busy && (
+            <Button size="sm" variant="outline" onClick={stop}>
+              停止
+            </Button>
+          )}
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={busy || (!input.trim() && !output)}
+            onClick={doClear}
+          >
+            清空
+          </Button>
+          <div className="flex-1" />
+          {output && !busy && (
+            <Button size="sm" variant="outline" onClick={() => setShowTranslation((v) => !v)}>
+              {showTranslation ? '查看原句' : '查看译文'}
+            </Button>
+          )}
+        </div>
+
+        {status === 'error' && (
+          <div className="flex shrink-0 items-center gap-1 border-b bg-destructive/5 px-3 py-1.5 text-xs text-destructive">
+            <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+            <span className="min-w-0 truncate">{error}</span>
+          </div>
+        )}
+
+        <Textarea
+          placeholder="输入或粘贴英文句子，点击「翻译」…"
+          value={displayValue}
+          onChange={(e) => setInput(e.target.value)}
+          disabled={busy}
+          readOnly={displayReadOnly}
+          className="min-h-0 flex-1 resize-none rounded-none border-0 p-3 shadow-none focus-visible:ring-0 disabled:opacity-100"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+              e.preventDefault()
+              doTranslate()
+            }
+          }}
+        />
+      </div>
+    )
+  }
+
   return (
-    // 整页随内容增高，由外层 main 滚动（不锁 h-full，长译文不会被挤出窗口）
+    // 完整模式：整页随内容增高，由外层 main 滚动（不锁 h-full，长译文不会被挤出窗口）
     <div className="flex flex-col gap-3 p-3">
       <Textarea
         placeholder="输入或粘贴英文句子，点击「翻译」…"
-        value={displayValue}
+        value={input}
         onChange={(e) => setInput(e.target.value)}
         disabled={busy}
-        readOnly={displayReadOnly}
-        className={cn(minimal ? 'min-h-16' : 'min-h-24', 'resize-none')}
+        className="min-h-24 resize-none"
         onKeyDown={(e) => {
           if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
             e.preventDefault()
@@ -87,15 +140,10 @@ export function TranslateView() {
         >
           清空
         </Button>
-        {minimal && output && !busy && (
-          <Button size="sm" variant="outline" onClick={() => setShowTranslation((v) => !v)}>
-            {showTranslation ? '查看原句' : '查看译文'}
-          </Button>
-        )}
       </div>
 
-      {!minimal && input.trim() && <WordChips />}
-      {!minimal && <AddConfirmDialog />}
+      {input.trim() && <WordChips />}
+      <AddConfirmDialog />
 
       <div>
         {status === 'loading' && (
@@ -108,7 +156,7 @@ export function TranslateView() {
         {status === 'error' && (
           <div className="flex items-center justify-between gap-2 rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
             <span>{error}</span>
-            {!llmConfigured && !minimal && (
+            {!llmConfigured && (
               <Button
                 size="sm"
                 variant="ghost"
@@ -121,7 +169,7 @@ export function TranslateView() {
           </div>
         )}
 
-        {!minimal && output && (
+        {output && (
           <div className="rounded-lg border bg-card p-3">
             <div className="mb-1.5 flex items-center gap-1 text-xs font-medium text-muted-foreground">
               <Sparkles className="h-3.5 w-3.5" />
@@ -131,7 +179,7 @@ export function TranslateView() {
           </div>
         )}
 
-        {!minimal && status === 'idle' && !output && !error && input.trim() && (
+        {status === 'idle' && !output && !error && input.trim() && (
           <p className="py-2 text-xs text-muted-foreground">点击「翻译」获取译文，Ctrl+Enter 也可触发</p>
         )}
       </div>

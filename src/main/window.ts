@@ -16,8 +16,8 @@ let quitting = false
 
 /** 完整模式最小尺寸 */
 const FULL_MIN = { width: 340, height: 420 }
-/** 极简模式最小尺寸（无底部导航：TitleBar 36 + padding 24 + 输入框 64 + 按钮行 ~32） */
-const MINIMAL_MIN = { width: 260, height: 180 }
+/** 极简模式最小尺寸（TitleBar 36 + 操作栏 36 + 文本框最小余量） */
+const MINIMAL_MIN = { width: 260, height: 140 }
 /** 进入极简模式时自动缩小到的紧凑默认尺寸 */
 const MINIMAL_DEFAULT = { width: 320, height: 240 }
 /** 进入极简模式前的窗口尺寸（退出时恢复） */
