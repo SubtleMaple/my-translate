@@ -1,4 +1,4 @@
-import { describeHttpError, LlmError, normalizeBaseURL } from './client'
+import { describeHttpError, httpFetch, LlmError, normalizeBaseURL } from './client'
 import { TRANSLATE_SYSTEM_PROMPT } from './prompts'
 import { getActiveLlm } from '../../shared/llm'
 import type { LlmSettings } from '../../shared/types'
@@ -13,8 +13,8 @@ import type { LlmSettings } from '../../shared/types'
 
 const STREAM_TIMEOUT_MS = 120_000
 
-/** Anthropic 协议必须显式指定 max_tokens（OpenAI 可省略） */
-const ANTHROPIC_STREAM_MAX_TOKENS = 2000
+/** Anthropic 协议必须显式指定 max_tokens；思考型模型需预留 thinking 预算 */
+const ANTHROPIC_STREAM_MAX_TOKENS = 4096
 
 export interface TranslateEmitter {
   chunk: (delta: string) => void
@@ -77,12 +77,13 @@ export async function runTranslate(
       ? `${normalizeBaseURL(config.baseURL)}/messages`
       : `${normalizeBaseURL(config.baseURL)}/chat/completions`
 
-    const res = await fetch(url, {
+    const res = await httpFetch(url, {
       method: 'POST',
       headers: isAnthropic
         ? {
             'Content-Type': 'application/json',
             'x-api-key': config.apiKey.trim(),
+            Authorization: `Bearer ${config.apiKey.trim()}`,
             'anthropic-version': '2023-06-01'
           }
         : {

@@ -68,12 +68,8 @@ export const useVocabStore = create<VocabState>((set, get) => ({
 
   setSortBy: async (sortBy) => {
     set({ sortBy })
-    // 持久化偏好，下次启动跟随
-    try {
-      await window.api.setSettings({ vocab: { sortBy } })
-    } catch {
-      /* 持久化失败不阻塞排序生效 */
-    }
+    // 同步 settingsStore（乐观更新 + 持久化），重进生词本页时 load() 读到一致的值，避免排序闪回
+    await useSettingsStore.getState().setVocabSortBy(sortBy)
     void get().refresh()
   },
 
