@@ -8,6 +8,7 @@ import { abortTranslate, runTranslate } from './llm/translate'
 import { refreshTrayMenu } from './tray'
 import {
   applyAlwaysOnTop,
+  applyMinimalMode,
   applyOpacity,
   clampOpacity,
   getMainWindow
@@ -57,6 +58,10 @@ export function registerIpcHandlers(): void {
     }
     if (patch.window?.opacity !== undefined) {
       applyOpacity(patch.window.opacity)
+    }
+    if (patch.ui?.minimal !== undefined) {
+      // 极简模式：动态调整窗口最小尺寸（自动缩小 / 退出恢复）
+      applyMinimalMode(patch.ui.minimal)
     }
     return next
   })
