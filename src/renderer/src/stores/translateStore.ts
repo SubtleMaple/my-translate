@@ -2,6 +2,7 @@ import { create } from 'zustand'
 
 import type { TranslateEvent, VocabAddResult } from '@shared/types'
 import { getActiveLlm } from '@shared/llm'
+import { detectInjection } from '@shared/injection'
 import { phraseByWordIndex, tokenize } from '@/lib/tokenize'
 import { useSettingsStore } from './settingsStore'
 
@@ -67,6 +68,16 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
     const text = get().input.trim()
     const status = get().status
     if (!text || status === 'loading' || status === 'streaming') return
+
+    // 输入侧注入防御：中文指令（域外输入）直接拒绝，不发起 LLM 请求
+    const injection = detectInjection(text)
+    if (injection.blocked) {
+      set({
+        status: 'error',
+        error: `检测到疑似提示词注入（${injection.matches.join('、')}），已拒绝翻译。英文内容会作为普通文本翻译。`
+      })
+      return
+    }
 
     const { config } = getActiveLlm(useSettingsStore.getState().settings.llm)
     if (!config.apiKey || !config.baseURL || !config.model) {

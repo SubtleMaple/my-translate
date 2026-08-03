@@ -1,5 +1,5 @@
 import { describeHttpError, httpFetch, LlmError, normalizeBaseURL, thinkingBodyParam } from './client'
-import { TRANSLATE_SYSTEM_PROMPT } from './prompts'
+import { TRANSLATE_SYSTEM_PROMPT, wrapTranslatableText } from './prompts'
 import { getActiveLlm } from '../../shared/llm'
 import type { LlmSettings } from '../../shared/types'
 
@@ -96,7 +96,7 @@ export async function runTranslate(
               model: config.model.trim(),
               max_tokens: ANTHROPIC_STREAM_MAX_TOKENS,
               system: TRANSLATE_SYSTEM_PROMPT,
-              messages: [{ role: 'user', content: text }],
+              messages: [{ role: 'user', content: wrapTranslatableText(text) }],
               stream: true,
               ...thinkingBodyParam(config)
             }
@@ -104,7 +104,7 @@ export async function runTranslate(
               model: config.model.trim(),
               messages: [
                 { role: 'system', content: TRANSLATE_SYSTEM_PROMPT },
-                { role: 'user', content: text }
+                { role: 'user', content: wrapTranslatableText(text) }
               ],
               stream: true,
               ...thinkingBodyParam(config)
