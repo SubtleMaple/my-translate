@@ -21,7 +21,7 @@ function countCjk(text: string): number {
 }
 
 function normalize(s: string): string {
-  return s.replace(/\s+/g, '')
+  return s.replace(/[\s\u200b-\u200f\u2028\u2029\ufeff]+/g, '')
 }
 
 export interface OutputCheckResult {
