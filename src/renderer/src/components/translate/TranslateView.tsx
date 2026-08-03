@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { AlertCircle, AlertTriangle, Loader2, Sparkles } from 'lucide-react'
+import { toast } from 'sonner'
 
 import { AddConfirmDialog } from '@/components/translate/AddConfirmDialog'
 import { WordChips } from '@/components/translate/WordChips'
@@ -52,6 +53,39 @@ export function TranslateView() {
     clear()
   }
 
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  /** 右键直接粘贴剪贴板文本（替换默认菜单；粘贴到光标处） */
+  const handleContextMenu = async (e: React.MouseEvent<HTMLTextAreaElement>) => {
+    e.preventDefault()
+    let text = ''
+    try {
+      text = await navigator.clipboard.readText()
+    } catch {
+      text = ''
+    }
+    if (!text.trim()) {
+      toast.info('剪贴板中没有可粘贴的文本')
+      return
+    }
+    const el = textareaRef.current
+    if (el) {
+      // 光标/选区位置（译文只读态时追加到末尾）
+      const start = el.selectionStart ?? input.length
+      const end = el.selectionEnd ?? input.length
+      const pos = displayReadOnly ? input.length : Math.min(start, input.length)
+      const next = input.slice(0, pos) + text + input.slice(pos)
+      setInput(next)
+      setShowTranslation(false)
+      requestAnimationFrame(() => {
+        el.focus()
+        el.setSelectionRange(pos + text.length, pos + text.length)
+      })
+    } else {
+      setInput(input + text)
+    }
+  }
+
   // 极简模式：整个客户区 = 操作栏 + 全幅文本框（随窗口缩放自适应），无嵌套容器
   if (minimal) {
     return (
@@ -97,11 +131,13 @@ export function TranslateView() {
         )}
 
         <Textarea
-          placeholder="输入或粘贴英文句子，点击「翻译」…"
+          ref={textareaRef}
+          placeholder="输入或粘贴英文句子，点击「翻译」…（右键可直接粘贴剪贴板）"
           value={displayValue}
           onChange={(e) => setInput(e.target.value)}
           disabled={busy}
           readOnly={displayReadOnly}
+          onContextMenu={(e) => void handleContextMenu(e)}
           className="min-h-0 flex-1 resize-none rounded-none border-0 p-3 shadow-none focus-visible:ring-0 disabled:opacity-100"
           onKeyDown={(e) => {
             if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
@@ -118,10 +154,12 @@ export function TranslateView() {
     // 完整模式：整页随内容增高，由外层 main 滚动（不锁 h-full，长译文不会被挤出窗口）
     <div className="flex flex-col gap-3 p-3">
       <Textarea
-        placeholder="输入或粘贴英文句子，点击「翻译」…"
+        ref={textareaRef}
+        placeholder="输入或粘贴英文句子，点击「翻译」…（右键可直接粘贴剪贴板）"
         value={input}
         onChange={(e) => setInput(e.target.value)}
         disabled={busy}
+        onContextMenu={(e) => void handleContextMenu(e)}
         className="min-h-24 resize-none"
         onKeyDown={(e) => {
           if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
