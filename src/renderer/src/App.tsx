@@ -26,10 +26,18 @@ export default function App() {
   const syncAlwaysOnTop = useSettingsStore((s) => s.syncAlwaysOnTop)
   const bindTranslateEvents = useTranslateStore((s) => s.bindEvents)
   const bindVocabEvents = useVocabStore((s) => s.bindEvents)
+  const minimal = useSettingsStore((s) => s.settings.ui.minimal)
 
   useEffect(() => {
     void load()
   }, [load])
+
+  // 极简模式是翻译模式：开启时自动回到翻译视图（导航已隐藏，需先退出极简才能切视图）
+  useEffect(() => {
+    if (minimal && view !== 'translate') {
+      setView('translate')
+    }
+  }, [minimal, view, setView])
 
   // 订阅托盘菜单的置顶切换
   useEffect(() => {
@@ -62,7 +70,8 @@ export default function App() {
           </>
         )}
       </main>
-      <nav className="flex h-12 shrink-0 items-stretch border-t">
+      {!minimal && (
+        <nav className="flex h-12 shrink-0 items-stretch border-t">
         {NAV_ITEMS.map(({ key, label, icon: Icon }) => (
           <button
             key={key}
@@ -76,7 +85,8 @@ export default function App() {
             {label}
           </button>
         ))}
-      </nav>
+        </nav>
+      )}
       <Toaster />
     </div>
   )

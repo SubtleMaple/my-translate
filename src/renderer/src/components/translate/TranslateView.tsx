@@ -5,6 +5,7 @@ import { AddConfirmDialog } from '@/components/translate/AddConfirmDialog'
 import { WordChips } from '@/components/translate/WordChips'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import { cn } from '@/lib/utils'
 import { getActiveLlm } from '@shared/llm'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useTranslateStore } from '@/stores/translateStore'
@@ -59,7 +60,7 @@ export function TranslateView() {
         onChange={(e) => setInput(e.target.value)}
         disabled={busy}
         readOnly={displayReadOnly}
-        className="min-h-24 resize-none"
+        className={cn(minimal ? 'min-h-16' : 'min-h-24', 'resize-none')}
         onKeyDown={(e) => {
           if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
             e.preventDefault()
@@ -106,7 +107,7 @@ export function TranslateView() {
         {status === 'error' && (
           <div className="flex items-center justify-between gap-2 rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
             <span>{error}</span>
-            {!llmConfigured && (
+            {!llmConfigured && !minimal && (
               <Button
                 size="sm"
                 variant="ghost"
