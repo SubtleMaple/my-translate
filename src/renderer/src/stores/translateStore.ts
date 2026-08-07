@@ -144,10 +144,10 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
   },
 
   addPhraseRange: (range) => {
-    // 累加式：完全相同的区间去重，部分重叠允许共存
+    // 切换语义：完全相同区间已存在 → 取消选中；否则追加（与点击单词切换一致）
     set((s) => {
       if (s.phraseRanges.some((r) => r.start === range.start && r.end === range.end)) {
-        return s
+        return { phraseRanges: s.phraseRanges.filter((r) => !(r.start === range.start && r.end === range.end)) }
       }
       return { phraseRanges: [...s.phraseRanges, range] }
     })
