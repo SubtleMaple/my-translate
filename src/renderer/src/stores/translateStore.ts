@@ -1,4 +1,4 @@
-import { create } from 'zustand'
+﻿import { create } from 'zustand'
 
 import type { TranslateEvent, VocabAddResult } from '@shared/types'
 import { getActiveLlm } from '@shared/llm'
@@ -29,8 +29,8 @@ interface TranslateState {
   outputWarning: boolean
   /** 选中的单词（小写归一） */
   selectedWords: Set<string>
-  /** 拖拽选中的短语（整段作为一条生词记录） */
-  phraseRange: PhraseRange | null
+  /** 拖拽选中的短语列表（累加式，每段作为一条生词记录） */
+  phraseRanges: PhraseRange[]
   /** 本次句子中已加入生词本/词库的词（小写归一），划线提示但仍可点击再次加入（count+1） */
   existedWords: Set<string>
   confirmOpen: boolean
@@ -41,7 +41,8 @@ interface TranslateState {
   stop: () => void
   clear: () => void
   toggleWord: (lower: string) => void
-  setPhraseRange: (range: PhraseRange | null) => void
+  /** 追加一个拖选短语（完全相同的区间去重；与单词选择共存） */
+  addPhraseRange: (range: PhraseRange) => void
   openConfirm: () => void
   closeConfirm: () => void
   /** @returns null 表示未执行（无选中或进行中） */
@@ -58,7 +59,7 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
   requestId: null,
   outputWarning: false,
   selectedWords: new Set(),
-  phraseRange: null,
+  phraseRanges: [],
   existedWords: new Set(),
   confirmOpen: false,
   adding: false,
@@ -68,7 +69,7 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
     set({
       input: value,
       selectedWords: new Set(),
-      phraseRange: null,
+      phraseRanges: [],
       existedWords: new Set(),
       outputWarning: false
     })
@@ -102,7 +103,7 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
       requestId,
       outputWarning: false,
       selectedWords: new Set(),
-      phraseRange: null
+      phraseRanges: []
       // existedWords 不重置：本次句子的「已加入」划线跨翻译保留
     })
     await window.api.translate(requestId, text)
@@ -125,12 +126,12 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
       requestId: null,
       outputWarning: false,
       selectedWords: new Set(),
-      phraseRange: null,
+      phraseRanges: [],
       existedWords: new Set()
     }),
 
   toggleWord: (lower) => {
-    // 已有短语选择时，点击单词先清掉短语（两种选择方式互斥）
+    // 单词与短语选择共存（互不清理）
     set((s) => {
       const next = new Set(s.selectedWords)
       if (next.has(lower)) {
@@ -138,24 +139,29 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
       } else {
         next.add(lower)
       }
-      return { selectedWords: next, phraseRange: null }
+      return { selectedWords: next }
     })
   },
 
-  setPhraseRange: (range) => {
-    // 短语选择替代单词选择，语义单一
-    set({ phraseRange: range, selectedWords: new Set() })
+  addPhraseRange: (range) => {
+    // 累加式：完全相同的区间去重，部分重叠允许共存
+    set((s) => {
+      if (s.phraseRanges.some((r) => r.start === range.start && r.end === range.end)) {
+        return s
+      }
+      return { phraseRanges: [...s.phraseRanges, range] }
+    })
   },
 
   openConfirm: () => set({ confirmOpen: true }),
   closeConfirm: () => set({ confirmOpen: false }),
 
   addToVocab: async () => {
-    const { selectedWords, phraseRange, input, adding } = get()
-    if ((selectedWords.size === 0 && !phraseRange) || adding) return null
+    const { selectedWords, phraseRanges, input, adding } = get()
+    if ((selectedWords.size === 0 && phraseRanges.length === 0) || adding) return null
     const entries: string[] = [...selectedWords]
-    if (phraseRange) {
-      entries.push(phraseByWordIndex(input, phraseRange.start, phraseRange.end))
+    for (const r of phraseRanges) {
+      entries.push(phraseByWordIndex(input, r.start, r.end))
     }
     set({ adding: true })
     try {
@@ -165,7 +171,7 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
         const next = new Set(s.existedWords)
         for (const w of result.added) next.add(w.toLowerCase())
         for (const w of result.existed) next.add(w.toLowerCase())
-        return { existedWords: next, selectedWords: new Set(), phraseRange: null, confirmOpen: false }
+        return { existedWords: next, selectedWords: new Set(), phraseRanges: [], confirmOpen: false }
       })
       return result
     } finally {

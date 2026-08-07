@@ -25,10 +25,10 @@ interface DragState {
 export function WordChips() {
   const input = useTranslateStore((s) => s.input)
   const selectedWords = useTranslateStore((s) => s.selectedWords)
-  const phraseRange = useTranslateStore((s) => s.phraseRange)
+  const phraseRanges = useTranslateStore((s) => s.phraseRanges)
   const existedWords = useTranslateStore((s) => s.existedWords)
   const toggleWord = useTranslateStore((s) => s.toggleWord)
-  const setPhraseRange = useTranslateStore((s) => s.setPhraseRange)
+  const addPhraseRange = useTranslateStore((s) => s.addPhraseRange)
   const openConfirm = useTranslateStore((s) => s.openConfirm)
 
   const tokens = useMemo(() => tokenize(input), [input])
@@ -43,7 +43,7 @@ export function WordChips() {
   /** 拖拽过程中的实时高亮区间（未提交） */
   const [liveRange, setLiveRange] = useState<PhraseRange | null>(null)
 
-  const selectionCount = selectedWords.size + (phraseRange ? 1 : 0)
+  const selectionCount = selectedWords.size + phraseRanges.length
 
   useEffect(() => {
     const onMove = (e: PointerEvent) => {
@@ -69,9 +69,9 @@ export function WordChips() {
       dragRef.current = null
       setLiveRange(null)
       if (d.dragging) {
-        // 提交短语（拖拽结束；即使起止同一词也作为短语/单次选择提交）
+        // 提交短语（拖拽结束；即使起止同一词也作为短语提交）
         suppressClick.current = true
-        setPhraseRange(
+        addPhraseRange(
           d.startIdx <= d.currentIdx
             ? { start: d.startIdx, end: d.currentIdx }
             : { start: d.currentIdx, end: d.startIdx }
@@ -93,7 +93,7 @@ export function WordChips() {
       window.removeEventListener('pointerup', onUp)
       window.removeEventListener('blur', onBlur)
     }
-  }, [setPhraseRange])
+  }, [addPhraseRange])
 
   const startDrag = (idx: number, e: React.PointerEvent) => {
     // 每次新的按下都复位点击抑制（拖拽提交后置位，避免吞掉下一次正常点击）
@@ -125,7 +125,7 @@ export function WordChips() {
   const inLiveRange = (idx: number) =>
     liveRange !== null && idx >= liveRange.start && idx <= liveRange.end
   const inCommittedRange = (idx: number) =>
-    phraseRange !== null && idx >= phraseRange.start && idx <= phraseRange.end
+    phraseRanges.some((r) => idx >= r.start && idx <= r.end)
 
   let wordIdx = -1
 
@@ -133,7 +133,7 @@ export function WordChips() {
     <div className="rounded-lg border bg-card p-3">
       <div className="mb-2 flex items-center justify-between">
         <span className="text-xs font-medium text-muted-foreground">
-          原文单词（点击多选，按住拖动选短语）
+          原文单词（点击多选，按住拖动选短语，可多段）
         </span>
         {selectionCount > 0 && (
           <Button size="sm" onClick={openConfirm}>
@@ -141,7 +141,7 @@ export function WordChips() {
           </Button>
         )}
       </div>
-      <p className={cn('flex flex-wrap items-center gap-y-1.5 text-sm leading-relaxed', (liveRange || phraseRange) && 'select-none')}>
+      <p className={cn('flex flex-wrap items-center gap-y-1.5 text-sm leading-relaxed', (liveRange || phraseRanges.length > 0) && 'select-none')}>
         {tokens.map((t, i) => {
           if (t.type === 'text') {
             return <span key={i}>{t.text}</span>
