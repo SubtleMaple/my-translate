@@ -23,7 +23,7 @@ export function AddConfirmDialog() {
   const closeConfirm = useTranslateStore((s) => s.closeConfirm)
   const input = useTranslateStore((s) => s.input)
   const selectedWords = useTranslateStore((s) => s.selectedWords)
-  const phraseRange = useTranslateStore((s) => s.phraseRange)
+  const phraseRanges = useTranslateStore((s) => s.phraseRanges)
   const adding = useTranslateStore((s) => s.adding)
   const addToVocab = useTranslateStore((s) => s.addToVocab)
 
@@ -36,13 +36,13 @@ export function AddConfirmDialog() {
     [input, selectedWords]
   )
 
-  // 拖拽选中的短语（整段一条）
-  const phrase = useMemo(
-    () => (phraseRange ? phraseByWordIndex(input, phraseRange.start, phraseRange.end) : null),
-    [input, phraseRange]
+  // 拖拽选中的短语列表（每段一条）
+  const phrases = useMemo(
+    () => phraseRanges.map((r) => phraseByWordIndex(input, r.start, r.end)).filter(Boolean),
+    [input, phraseRanges]
   )
 
-  const itemCount = words.length + (phrase ? 1 : 0)
+  const itemCount = words.length + phrases.length
 
   const onConfirm = async () => {
     const result = await addToVocab()
@@ -75,12 +75,15 @@ export function AddConfirmDialog() {
               {w}
             </span>
           ))}
-          {phrase && (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-2.5 py-0.5 text-sm">
-              {phrase}
+          {phrases.map((p) => (
+            <span
+              key={p.toLowerCase()}
+              className="inline-flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-2.5 py-0.5 text-sm"
+            >
+              {p}
               <span className="text-[10px] font-medium text-primary">短语</span>
             </span>
-          )}
+          ))}
         </div>
         <DialogFooter>
           <Button variant="outline" disabled={adding} onClick={closeConfirm}>
