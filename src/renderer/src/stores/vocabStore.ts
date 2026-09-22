@@ -12,6 +12,7 @@ import { useSettingsStore } from './settingsStore'
 interface VocabState {
   entries: VocabEntry[]
   loading: boolean
+  error: string | null
   searchInput: string
   search: string
   sortBy: VocabSortBy
@@ -26,39 +27,42 @@ interface VocabState {
 }
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
+let queryVersion = 0
+let sortVersion = 0
 
 export const useVocabStore = create<VocabState>((set, get) => ({
   entries: [],
   loading: false,
+  error: null,
   searchInput: '',
   search: '',
   sortBy: 'time',
   expandedId: null,
 
   load: async () => {
-    set({ loading: true })
-    try {
-      // 初始排序跟随设置（settingsStore 已加载完成）
-      const { sortBy } = useSettingsStore.getState().settings.vocab
-      const entries = await window.api.listVocab({ search: get().search, sortBy })
-      set({ entries, sortBy, loading: false })
-    } catch (e) {
-      console.error('[vocab] 加载失败:', e)
-      set({ loading: false })
-    }
+    set({ sortBy: useSettingsStore.getState().settings.vocab.sortBy })
+    await get().refresh()
   },
 
   refresh: async () => {
+    const version = ++queryVersion
+    const search = get().searchInput.trim()
+    set({ loading: true, error: null, search })
     try {
-      const entries = await window.api.listVocab({ search: get().search, sortBy: get().sortBy })
-      set({ entries })
+      const entries = await window.api.listVocab({ search, sortBy: get().sortBy })
+      if (version !== queryVersion) return
+      set({ entries, loading: false })
     } catch (e) {
+      if (version !== queryVersion) return
       console.error('[vocab] 刷新失败:', e)
+      set({ loading: false, error: '生词本加载失败，请重试。' })
     }
   },
 
   setSearchInput: (v) => {
-    set({ searchInput: v })
+    // 输入一改变就淘汰旧请求，包含防抖等待期间返回的请求。
+    queryVersion++
+    set({ searchInput: v, loading: true, error: null, expandedId: null })
     if (debounceTimer) clearTimeout(debounceTimer)
     debounceTimer = setTimeout(() => {
       set({ search: v.trim(), expandedId: null })
@@ -67,10 +71,19 @@ export const useVocabStore = create<VocabState>((set, get) => ({
   },
 
   setSortBy: async (sortBy) => {
+    const version = ++sortVersion
     set({ sortBy })
-    // 同步 settingsStore（乐观更新 + 持久化），重进生词本页时 load() 读到一致的值，避免排序闪回
-    await useSettingsStore.getState().setVocabSortBy(sortBy)
-    void get().refresh()
+    const refresh = get().refresh()
+    try {
+      await useSettingsStore.getState().setVocabSortBy(sortBy)
+    } catch (e) {
+      console.error('[vocab] 排序偏好保存失败:', e)
+      await refresh
+      if (version === sortVersion) {
+        set({ error: '当前排序已应用，但偏好保存失败；请重新选择排序重试。' })
+      }
+    }
+    await refresh
   },
 
   toggleExpand: (id) => {

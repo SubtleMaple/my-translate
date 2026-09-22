@@ -1,197 +1,163 @@
-﻿import { create } from 'zustand'
-
+import { create } from 'zustand'
 import type { TranslateEvent, VocabAddResult } from '@shared/types'
 import { getActiveLlm } from '@shared/llm'
 import { detectInjection } from '@shared/injection'
 import { checkOutputForInjection } from '@shared/outputCheck'
-import { phraseByWordIndex, tokenize } from '@/lib/tokenize'
+import { phraseByWordIndex } from '@/lib/tokenize'
+import { selectedEntries, type PhraseRange } from '@/lib/selection'
 import { useSettingsStore } from './settingsStore'
 
-export type TranslateStatus = 'idle' | 'loading' | 'streaming' | 'error'
+export type { PhraseRange } from '@/lib/selection'
+export type TranslateStatus = 'idle' | 'loading' | 'streaming' | 'done' | 'stopped' | 'error'
 
-/** 拖拽选中的短语范围（单词 token 序号闭区间） */
-export interface PhraseRange {
-  start: number
-  end: number
-}
-
-/**
- * 翻译状态机 + 单词多选 + 短语拖选
- * 流式事件在 App 挂载时经 bindEvents 订阅，视图切换不丢失
- */
 interface TranslateState {
   input: string
+  revision: number
   status: TranslateStatus
   output: string
   error: string
   requestId: string | null
-  /** 输出侧校验标记：输出疑似执行了输入中的指令（显示警告条，不拦截） */
   outputWarning: boolean
-  /** 选中的单词（小写归一） */
   selectedWords: Set<string>
-  /** 拖拽选中的短语列表（累加式，每段作为一条生词记录） */
   phraseRanges: PhraseRange[]
-  /** 本次句子中已加入生词本/词库的词（小写归一），划线提示但仍可点击再次加入（count+1） */
+  /** Full vocabulary index, independent of the list's search filter. */
   existedWords: Set<string>
-  confirmOpen: boolean
+  catalogStatus: 'loading' | 'ready' | 'error'
   adding: boolean
-
+  addingRevision: number | null
   setInput: (value: string) => void
   translate: () => Promise<void>
   stop: () => void
   clear: () => void
   toggleWord: (lower: string) => void
-  /** 追加一个拖选短语（完全相同的区间去重；与单词选择共存） */
   addPhraseRange: (range: PhraseRange) => void
-  openConfirm: () => void
-  closeConfirm: () => void
-  /** @returns null 表示未执行（无选中或进行中） */
+  removeSelection: (entry: string) => void
+  clearSelection: () => void
   addToVocab: () => Promise<VocabAddResult | null>
+  refreshCatalog: () => Promise<void>
   handleEvent: (e: TranslateEvent) => void
   bindEvents: () => () => void
 }
 
-export const useTranslateStore = create<TranslateState>((set, get) => ({
-  input: '',
-  status: 'idle',
-  output: '',
-  error: '',
-  requestId: null,
-  outputWarning: false,
-  selectedWords: new Set(),
-  phraseRanges: [],
-  existedWords: new Set(),
-  confirmOpen: false,
-  adding: false,
+let catalogRequest = 0
+function abort(requestId: string | null): void {
+  if (requestId) void window.api.abortTranslate(requestId).catch(() => { /* late events are ignored */ })
+}
 
-  setInput: (value) => {
-    // 输入变化后分词随之变化：清空选择、短语、本次已加入标记与输出警告
-    set({
-      input: value,
-      selectedWords: new Set(),
-      phraseRanges: [],
-      existedWords: new Set(),
-      outputWarning: false
-    })
+export const useTranslateStore = create<TranslateState>((set, get) => ({
+  input: '', revision: 0, status: 'idle', output: '', error: '', requestId: null,
+  outputWarning: false, selectedWords: new Set(), phraseRanges: [], existedWords: new Set(),
+  catalogStatus: 'loading', adding: false, addingRevision: null,
+
+  setInput: (input) => {
+    if (input === get().input) return
+    const previous = get().requestId
+    set((s) => ({ input, revision: s.revision + 1, output: '', error: '', status: 'idle',
+      requestId: null, outputWarning: false, selectedWords: new Set(), phraseRanges: [] }))
+    abort(previous)
   },
   translate: async () => {
-    const text = get().input.trim()
-    const status = get().status
+    const { input, status } = get()
+    const text = input.trim()
     if (!text || status === 'loading' || status === 'streaming') return
-
-    // 输入侧注入防御：中文指令（域外输入）直接拒绝，不发起 LLM 请求
+    set({ output: '', outputWarning: false, error: '', requestId: null })
     const injection = detectInjection(text)
     if (injection.blocked) {
-      set({
-        status: 'error',
-        error: `检测到疑似提示词注入（${injection.matches.join('、')}），已拒绝翻译。英文内容会作为普通文本翻译。`
-      })
+      set({ status: 'error', error: `检测到疑似提示词注入（${injection.matches.join('、')}），已拒绝翻译。英文内容会作为普通文本翻译。` })
       return
     }
-
     const { config } = getActiveLlm(useSettingsStore.getState().settings.llm)
     if (!config.apiKey || !config.baseURL || !config.model) {
       set({ status: 'error', error: '请先在设置页配置大模型（API Key / Base URL / Model）' })
       return
     }
-
     const requestId = crypto.randomUUID()
-    set({
-      status: 'loading',
-      output: '',
-      error: '',
-      requestId,
-      outputWarning: false,
-      selectedWords: new Set(),
-      phraseRanges: []
-      // existedWords 不重置：本次句子的「已加入」划线跨翻译保留
-    })
-    await window.api.translate(requestId, text)
-  },
-
-  stop: () => {
-    const rid = get().requestId
-    if (rid) {
-      void window.api.abortTranslate(rid)
-      set({ status: 'idle', requestId: null })
+    set({ status: 'loading', requestId })
+    try {
+      await window.api.translate(requestId, text)
+    } catch {
+      if (get().requestId === requestId) set({ status: 'error', requestId: null, error: '翻译请求未能发出，请重试。' })
     }
   },
-
-  clear: () =>
-    set({
-      input: '',
-      output: '',
-      error: '',
-      status: 'idle',
-      requestId: null,
-      outputWarning: false,
-      selectedWords: new Set(),
-      phraseRanges: [],
-      existedWords: new Set()
-    }),
-
-  toggleWord: (lower) => {
-    // 单词与短语选择共存（互不清理）
+  stop: () => {
+    const requestId = get().requestId
+    if (!requestId) return
+    set({ status: 'stopped', requestId: null })
+    abort(requestId)
+  },
+  clear: () => {
+    const requestId = get().requestId
+    set((s) => ({ input: '', revision: s.revision + 1, output: '', error: '', status: 'idle',
+      requestId: null, outputWarning: false, selectedWords: new Set(), phraseRanges: [] }))
+    abort(requestId)
+  },
+  toggleWord: (word) => {
+    if (get().addingRevision === get().revision) return
+    const lower = word.toLowerCase()
     set((s) => {
       const next = new Set(s.selectedWords)
-      if (next.has(lower)) {
-        next.delete(lower)
-      } else {
-        next.add(lower)
-      }
+      if (next.has(lower)) next.delete(lower)
+      else next.add(lower)
       return { selectedWords: next }
     })
   },
-
   addPhraseRange: (range) => {
-    // 切换语义：完全相同区间已存在 → 取消选中；否则追加（与点击单词切换一致）
-    set((s) => {
-      if (s.phraseRanges.some((r) => r.start === range.start && r.end === range.end)) {
-        return { phraseRanges: s.phraseRanges.filter((r) => !(r.start === range.start && r.end === range.end)) }
-      }
-      return { phraseRanges: [...s.phraseRanges, range] }
-    })
-  },
-
-  openConfirm: () => set({ confirmOpen: true }),
-  closeConfirm: () => set({ confirmOpen: false }),
-
-  addToVocab: async () => {
-    const { selectedWords, phraseRanges, input, adding } = get()
-    if ((selectedWords.size === 0 && phraseRanges.length === 0) || adding) return null
-    const entries: string[] = [...selectedWords]
-    for (const r of phraseRanges) {
-      entries.push(phraseByWordIndex(input, r.start, r.end))
+    if (get().addingRevision === get().revision) return
+    if (range.start === range.end) {
+      get().toggleWord(phraseByWordIndex(get().input, range.start, range.end).toLowerCase())
+      return
     }
-    set({ adding: true })
+    set((s) => ({ phraseRanges: s.phraseRanges.some((r) => r.start === range.start && r.end === range.end)
+      ? s.phraseRanges.filter((r) => !(r.start === range.start && r.end === range.end))
+      : [...s.phraseRanges, range] }))
+  },
+  removeSelection: (entry) => {
+    if (get().addingRevision === get().revision) return
+    const lower = entry.toLowerCase()
+    set((s) => ({ selectedWords: new Set([...s.selectedWords].filter((w) => w !== lower)),
+      phraseRanges: s.phraseRanges.filter((r) => phraseByWordIndex(s.input, r.start, r.end).toLowerCase() !== lower) }))
+  },
+  clearSelection: () => {
+    if (get().addingRevision !== get().revision) set({ selectedWords: new Set(), phraseRanges: [] })
+  },
+  addToVocab: async () => {
+    const { selectedWords, phraseRanges, input, revision, adding } = get()
+    const entries = selectedEntries(input, selectedWords, phraseRanges)
+    if (!entries.length || adding) return null
+    set({ adding: true, addingRevision: revision })
     try {
       const result = await window.api.addVocab(entries, input)
-      // 立即更新已收录标记（含本次新增与已存在的）
-      set((s) => {
-        const next = new Set(s.existedWords)
-        for (const w of result.added) next.add(w.toLowerCase())
-        for (const w of result.existed) next.add(w.toLowerCase())
-        return { existedWords: next, selectedWords: new Set(), phraseRanges: [], confirmOpen: false }
-      })
+      catalogRequest += 1
+      set((s) => ({
+        existedWords: new Set([...s.existedWords, ...result.added.map((w) => w.toLowerCase()), ...result.existed.map((w) => w.toLowerCase())]),
+        ...(s.revision === revision ? { selectedWords: new Set<string>(), phraseRanges: [] } : {})
+      }))
+      void get().refreshCatalog()
       return result
     } finally {
-      set({ adding: false })
+      set({ adding: false, addingRevision: null })
     }
   },
-
+  refreshCatalog: async () => {
+    const request = ++catalogRequest
+    try {
+      const entries = await window.api.listVocab({})
+      if (request === catalogRequest) set({ existedWords: new Set(entries.map((e) => e.word.trim().toLowerCase())), catalogStatus: 'ready' })
+    } catch {
+      if (request === catalogRequest) set({ catalogStatus: 'error', existedWords: new Set() })
+    }
+  },
   handleEvent: (e) => {
     if (e.requestId !== get().requestId) return
-    if (e.type === 'chunk') {
-      set((s) => ({ output: s.output + e.delta, status: 'streaming' }))
-    } else if (e.type === 'done') {
-      // 输出侧校验：中文为主的输入未整段回显 → 疑似执行了输入中的指令（仅警告，不拦截）
-      const warning = checkOutputForInjection(get().input, e.fullText).flagged
-      set({ status: 'idle', output: e.fullText, requestId: null, outputWarning: warning })
-      // 划线只反映「本次句子已加入」，不查询词库历史（历史词仍可点击加入 count+1）
-    } else {
-      set({ status: 'error', error: e.message, requestId: null })
-    }
+    if (e.type === 'chunk') set((s) => ({ output: s.output + e.delta, status: 'streaming' }))
+    else if (e.type === 'done') set({ status: 'done', output: e.fullText, requestId: null,
+      outputWarning: checkOutputForInjection(get().input, e.fullText).flagged })
+    else set({ status: 'error', error: e.message, requestId: null })
   },
-
-  bindEvents: () => window.api.onTranslateEvent((e) => get().handleEvent(e))
+  bindEvents: () => {
+    const offTranslate = window.api.onTranslateEvent((e) => get().handleEvent(e))
+    const offVocab = window.api.onVocabChanged(() => { void get().refreshCatalog() })
+    void get().refreshCatalog()
+    return () => { offTranslate(); offVocab(); catalogRequest += 1 }
+  }
 }))

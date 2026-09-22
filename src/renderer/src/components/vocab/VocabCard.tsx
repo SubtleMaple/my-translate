@@ -1,7 +1,6 @@
-import { ChevronDown, RefreshCw } from 'lucide-react'
+import { ChevronDown } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { formatRelativeTime } from '@/lib/format'
@@ -10,87 +9,48 @@ import type { VocabEntry } from '@shared/types'
 import { useVocabStore } from '@/stores/vocabStore'
 import { VocabDetail } from './VocabDetail'
 
-/** 生词卡片：单词/音标/简要释义/添加时间/状态徽标；点击展开详情 */
-export function VocabCard({ entry }: { entry: VocabEntry }) {
+/** 折叠按钮与详情中的操作分离，键盘和鼠标均可展开。 */
+export function VocabCard({ entry, review = false }: { entry: VocabEntry; review?: boolean }) {
   const expandedId = useVocabStore((s) => s.expandedId)
   const toggleExpand = useVocabStore((s) => s.toggleExpand)
   const expanded = expandedId === entry.id
-
-  const regenerate = (e: React.MouseEvent) => {
-    e.stopPropagation()
-    void window.api.regenerateDetail(entry.id)
-  }
+  const hidden = review && !expanded
 
   return (
-    <Card
-      className={cn(
-        'cursor-pointer transition-colors hover:bg-accent/40',
-        expanded && 'bg-accent/40'
-      )}
-      onClick={() => toggleExpand(entry.id)}
-    >
-      <div className="p-3">
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-2">
-            <span className="truncate font-semibold">{entry.word}</span>
-            {entry.pos && <span className="shrink-0 text-xs text-muted-foreground">{entry.pos}</span>}
-          </div>
-          <div className="flex shrink-0 items-center gap-1.5">
-            {entry.status === 'pending' && <Badge variant="warning">生成中</Badge>}
-            {entry.status === 'failed' && (
-              <Badge variant="destructive">失败</Badge>
-            )}
-            <span className="rounded-full bg-secondary/70 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-              ×{entry.count}
-            </span>
-            <span className="text-[11px] text-muted-foreground">
-              {formatRelativeTime(entry.createdAt)}
-            </span>
-            <ChevronDown
-              className={cn(
-                'h-4 w-4 text-muted-foreground transition-transform',
-                expanded && 'rotate-180'
-              )}
-            />
-          </div>
-        </div>
-
-        {entry.status === 'pending' ? (
-          <div className="mt-2 space-y-1.5">
+    <Card className={cn('min-w-0 overflow-hidden transition-colors', expanded && 'border-primary/40')}>
+      <button
+        type="button"
+        className="block w-full rounded-lg p-3 text-left transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        aria-expanded={expanded}
+        aria-controls={`vocab-detail-${entry.id}`}
+        aria-label={`${entry.word}，${expanded ? (review ? '隐藏答案' : '收起详情') : (review ? '揭晓答案' : '展开详情')}`}
+        onClick={() => toggleExpand(entry.id)}
+      >
+        <span className="flex items-start gap-2">
+          <span className="min-w-0 flex-1 break-words font-semibold [overflow-wrap:anywhere]">{entry.word}</span>
+          <ChevronDown aria-hidden="true" className={cn('mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-transform', expanded && 'rotate-180')} />
+        </span>
+        <span className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
+          {entry.status === 'pending' && <Badge variant="warning">生成中</Badge>}
+          {entry.status === 'failed' && <Badge variant="destructive">详情待重试</Badge>}
+          <span>摘录 {entry.count} 次</span>
+          <span>{formatRelativeTime(entry.createdAt)}</span>
+          {review && <span className="font-medium text-primary">{hidden ? '点击揭晓' : '已揭晓 · 点击隐藏'}</span>}
+        </span>
+        {!hidden && (entry.status === 'pending' ? (
+          <span className="mt-2 block space-y-1.5">
             <Skeleton className="h-3 w-24" />
             <Skeleton className="h-3 w-full" />
-          </div>
+          </span>
         ) : (
           <>
-            {entry.phonetic && (
-              <p className="mt-1 text-xs text-muted-foreground">{entry.phonetic}</p>
-            )}
-            <div className="mt-1 flex items-center justify-between gap-2">
-              <p className="min-w-0 truncate text-sm text-muted-foreground">
-                {entry.brief || '（暂无释义）'}
-              </p>
-              {entry.status === 'failed' && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="shrink-0 px-2 text-xs"
-                  onClick={regenerate}
-                  title="重新生成详情"
-                >
-                  <RefreshCw className="mr-1 h-3.5 w-3.5" />
-                  重试
-                </Button>
-              )}
-            </div>
+            {(entry.phonetic || entry.pos) && <span className="mt-1.5 block break-words text-xs text-muted-foreground [overflow-wrap:anywhere]">{[entry.phonetic, entry.pos].filter(Boolean).join(' · ')}</span>}
+            <span className="mt-1 block break-words text-sm text-muted-foreground [overflow-wrap:anywhere]">{entry.brief || '暂无释义，展开查看状态'}</span>
           </>
-        )}
-      </div>
-
+        ))}
+      </button>
       {expanded && (
-        <div
-          className="border-t px-3 pb-3 pt-0"
-          onClick={(e) => e.stopPropagation()}
-        >
+        <div id={`vocab-detail-${entry.id}`} className="min-w-0 border-t px-3 pb-3">
           <VocabDetail entry={entry} />
         </div>
       )}

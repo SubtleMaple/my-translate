@@ -67,13 +67,14 @@ export function createMainWindow(): BrowserWindow {
   const settings = getSettings()
   const saved = settings.window.bounds
   const useSaved = saved !== null && boundsVisible(saved)
+  const minimum = settings.ui.minimal ? MINIMAL_MIN : FULL_MIN
 
   const win = new BrowserWindow({
-    width: useSaved ? saved.width : 400,
-    height: useSaved ? saved.height : 560,
+    width: useSaved ? Math.max(saved.width, minimum.width) : 400,
+    height: useSaved ? Math.max(saved.height, minimum.height) : 560,
     ...(useSaved ? { x: saved.x, y: saved.y } : {}),
-    minWidth: FULL_MIN.width,
-    minHeight: FULL_MIN.height,
+    minWidth: minimum.width,
+    minHeight: minimum.height,
     frame: false,
     resizable: true,
     show: false,
@@ -137,7 +138,7 @@ export function applyOpacity(value: number): void {
 
 /**
  * 极简模式窗口适配
- * - 进入：记忆当前 bounds → 放开最小尺寸（260×180）→ shrink=true 时自动缩到紧凑默认（320×240）
+ * - 进入：记忆当前 bounds → 放开最小尺寸（260×140）→ shrink=true 时自动缩到紧凑默认（320×240）
  * - 退出：恢复完整最小尺寸（340×420）→ 当前小于完整最小则用进入前尺寸恢复（用户手动拉大则保持）
  * @param shrink 运行期切换时才自动缩小；启动恢复（shrink=false）只设最小尺寸，尊重已保存 bounds
  */
@@ -159,8 +160,9 @@ export function applyMinimalMode(minimal: boolean, shrink = true): void {
       }
     }
   } else {
-    win.setMinimumSize(FULL_MIN.width, FULL_MIN.height)
+    // Read before raising the minimum: Windows may immediately resize the window.
     const b = win.getBounds()
+    win.setMinimumSize(FULL_MIN.width, FULL_MIN.height)
     if (b.width < FULL_MIN.width || b.height < FULL_MIN.height) {
       if (minimalBoundsBefore !== null) {
         win.setBounds(minimalBoundsBefore)

@@ -14,7 +14,9 @@
     "dist:dir": "electron-vite build && electron-builder --dir",
     "typecheck": "pnpm typecheck:node && pnpm typecheck:web",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
-    "typecheck:web": "tsc --noEmit -p tsconfig.web.json"
+    "typecheck:web": "tsc --noEmit -p tsconfig.web.json",
+    "test": "node tests/run.cjs",
+    "test:electron": "pnpm build && electron tests/electron-flow.cjs"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.23",

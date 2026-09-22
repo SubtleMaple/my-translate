@@ -57,7 +57,7 @@ export default function App() {
   return (
     <div className="flex h-screen flex-col overflow-hidden">
       <TitleBar />
-      <main className={cn('flex-1', minimal ? 'overflow-hidden' : 'overflow-y-auto')}>
+      <main className={cn('min-h-0 min-w-0 flex-1', minimal || view === 'vocab' ? 'overflow-hidden' : 'overflow-y-auto')}>
         {!loaded ? (
           <div className="flex h-full items-center justify-center">
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -71,15 +71,16 @@ export default function App() {
         )}
       </main>
       {!minimal && (
-        <nav className="flex h-12 shrink-0 items-stretch border-t">
+        <nav aria-label="主导航" className="flex h-12 shrink-0 items-stretch border-t bg-card">
         {NAV_ITEMS.map(({ key, label, icon: Icon }) => (
           <button
             key={key}
             className={cn(
               'flex flex-1 flex-col items-center justify-center gap-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-accent/60',
-              view === key && 'bg-accent text-accent-foreground'
+              view === key && 'bg-primary/5 text-primary'
             )}
             onClick={() => setView(key)}
+            aria-current={view === key ? 'page' : undefined}
           >
             <Icon className="h-4 w-4" />
             {label}

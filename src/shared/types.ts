@@ -43,7 +43,7 @@ export interface VocabQuery {
 export interface VocabAddResult {
   /** 成功加入（进入详情生成队列）的词 */
   added: string[]
-  /** 已存在而被跳过的词 */
+  /** 已存在且出现次数 +1 的词（不重复生成详情） */
   existed: string[]
   /** 成功加入记录的 id（与 added 一一对应，主进程据此自动入队生成详情） */
   addedIds: number[]

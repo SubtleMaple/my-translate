@@ -9,6 +9,11 @@ import { flushDatabase as flushDbFile } from './db/persist'
 import { enqueueAllPending } from './services/vocabService'
 import { setFetchImpl } from './llm/client'
 
+// Development checks use a disposable profile, never the user's working vocabulary.
+if (!app.isPackaged && process.env.MY_TRANSLATE_USER_DATA) {
+  app.setPath('userData', process.env.MY_TRANSLATE_USER_DATA)
+}
+
 // 单实例锁：第二个实例启动时聚焦已有窗口
 const gotLock = app.requestSingleInstanceLock()
 if (!gotLock) {
