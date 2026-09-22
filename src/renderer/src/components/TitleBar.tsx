@@ -5,7 +5,7 @@ import { useSettingsStore } from '@/stores/settingsStore'
 import { useUiStore } from '@/stores/uiStore'
 
 const btnClass =
-  'no-drag inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground'
+  'no-drag inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
 
 /**
  * 无边框窗口自定义标题栏
@@ -20,11 +20,11 @@ export function TitleBar() {
 
   return (
     <header className="drag flex h-9 shrink-0 select-none items-center justify-between border-b pl-3 pr-1.5">
-      <div className="flex items-center gap-1.5 text-xs font-semibold">
+      <div className="flex min-w-0 items-center gap-1.5 text-xs font-semibold">
         <Languages className="h-3.5 w-3.5" />
-        <span>译 · 生词本</span>
+        <span className="truncate">{minimal ? '译' : '译 · 生词本'}</span>
       </div>
-      <div className="flex items-center gap-0.5">
+      <div className="flex shrink-0 items-center gap-0.5">
         <button
           className={cn(btnClass, alwaysOnTop && 'bg-accent text-accent-foreground')}
           title={alwaysOnTop ? '取消置顶' : '始终置顶'}

@@ -16,7 +16,6 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import type { VocabEntry } from '@shared/types'
-import { useVocabStore } from '@/stores/vocabStore'
 
 /**
  * 生词完整详情：原句回顾 + Markdown 渲染 + 个人备注 + 删除/重新生成
@@ -26,6 +25,7 @@ export function VocabDetail({ entry }: { entry: VocabEntry }) {
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [regenerating, setRegenerating] = useState(false)
 
   useEffect(() => {
     setNote(entry.note)
@@ -49,23 +49,30 @@ export function VocabDetail({ entry }: { entry: VocabEntry }) {
     try {
       await window.api.deleteVocab(entry.id)
       toast.success(`已删除「${entry.word}」`)
+      setDeleteOpen(false)
     } catch {
       toast.error('删除失败')
     } finally {
       setDeleting(false)
-      setDeleteOpen(false)
     }
   }
 
   const regenerate = async () => {
-    await window.api.regenerateDetail(entry.id)
-    toast.success('已重新生成详情')
+    setRegenerating(true)
+    try {
+      await window.api.regenerateDetail(entry.id)
+      toast.success('已开始重新生成详情')
+    } catch {
+      toast.error('重新生成失败，请重试')
+    } finally {
+      setRegenerating(false)
+    }
   }
 
   return (
-    <div className="space-y-3 pt-3">
+    <div className="min-w-0 space-y-3 break-words pt-3 [overflow-wrap:anywhere]">
       {entry.contextSentence && (
-        <div className="rounded-md bg-muted/60 px-3 py-2 text-xs italic text-muted-foreground">
+        <div className="max-h-40 overflow-y-auto whitespace-pre-wrap rounded-md bg-muted/60 px-3 py-2 text-xs italic leading-relaxed text-muted-foreground">
           “{entry.contextSentence}”
         </div>
       )}
@@ -83,12 +90,12 @@ export function VocabDetail({ entry }: { entry: VocabEntry }) {
       )}
 
       {entry.status === 'failed' && (
-        <div className="flex items-center justify-between gap-2 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-          <span className="flex items-center gap-1.5">
+        <div className="flex flex-wrap items-start justify-between gap-2 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+          <span className="flex max-h-40 min-w-0 basis-full items-start gap-1.5 overflow-y-auto">
             <AlertCircle className="h-4 w-4 shrink-0" />
             {entry.failReason || '详情生成失败'}
           </span>
-          <Button size="sm" variant="ghost" className="shrink-0 text-destructive" onClick={regenerate}>
+          <Button size="sm" variant="ghost" disabled={regenerating} className="shrink-0 text-destructive" onClick={() => void regenerate()}>
             <RefreshCw className="mr-1 h-3.5 w-3.5" />
             重新生成
           </Button>
@@ -96,7 +103,7 @@ export function VocabDetail({ entry }: { entry: VocabEntry }) {
       )}
 
       {entry.status === 'ready' && entry.detail && (
-        <div className="prose prose-sm max-w-none dark:prose-invert">
+        <div className="prose prose-sm min-w-0 max-w-none overflow-x-auto dark:prose-invert prose-pre:max-w-full prose-pre:overflow-x-auto prose-table:block prose-table:overflow-x-auto">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>{entry.detail}</ReactMarkdown>
         </div>
       )}
@@ -114,6 +121,7 @@ export function VocabDetail({ entry }: { entry: VocabEntry }) {
           value={note}
           onChange={(e) => setNote(e.target.value)}
           placeholder="记录自己的记忆方法、易错点…"
+          aria-label={`为 ${entry.word} 添加备注`}
           className="min-h-16 resize-none text-sm"
         />
         <div className="flex items-center justify-between">
@@ -138,8 +146,8 @@ export function VocabDetail({ entry }: { entry: VocabEntry }) {
         </div>
       </div>
 
-      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-        <DialogContent className="max-w-sm">
+      <Dialog open={deleteOpen} onOpenChange={(open) => { if (!deleting) setDeleteOpen(open) }}>
+        <DialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-sm overflow-y-auto break-words [overflow-wrap:anywhere]">
           <DialogHeader>
             <DialogTitle>删除生词</DialogTitle>
             <DialogDescription>

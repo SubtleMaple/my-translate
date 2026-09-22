@@ -1,182 +1,124 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Check } from 'lucide-react'
-
+import { BookmarkPlus, Check, Loader2, X } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { tokenize } from '@/lib/tokenize'
-import type { Token, WordToken } from '@/lib/tokenize'
+import { tokenize, type WordToken } from '@/lib/tokenize'
+import { savedPhrases, selectedEntries } from '@/lib/selection'
 import { useTranslateStore, type PhraseRange } from '@/stores/translateStore'
 
-/** 位移超过该阈值判定为拖拽（否则视为点击） */
-const DRAG_THRESHOLD_PX = 4
+interface DragState { startIdx: number; startX: number; startY: number; dragging: boolean; currentIdx: number }
 
-interface DragState {
-  startIdx: number
-  startX: number
-  startY: number
-  dragging: boolean
-  currentIdx: number
-}
-
-/**
- * 原文单词 Chip：点击多选 + 按住拖动选连续短语（整段作为一条生词）
- * 已收录生词仍弱化展示（点击提示），但可被短语范围覆盖高亮
- */
 export function WordChips() {
-  const input = useTranslateStore((s) => s.input)
-  const selectedWords = useTranslateStore((s) => s.selectedWords)
-  const phraseRanges = useTranslateStore((s) => s.phraseRanges)
-  const existedWords = useTranslateStore((s) => s.existedWords)
-  const toggleWord = useTranslateStore((s) => s.toggleWord)
-  const addPhraseRange = useTranslateStore((s) => s.addPhraseRange)
-  const openConfirm = useTranslateStore((s) => s.openConfirm)
-
+  const { input, selectedWords, phraseRanges, existedWords, catalogStatus, adding, addingRevision, revision,
+    toggleWord, addPhraseRange, removeSelection, clearSelection, addToVocab, refreshCatalog } = useTranslateStore()
   const tokens = useMemo(() => tokenize(input), [input])
-  // 单词 token 序号 → 词形（按顺序，供短语取词）
-  const wordTokens = useMemo(
-    () => tokens.filter((t): t is WordToken => t.type === 'word'),
-    [tokens]
-  )
-
+  const entries = useMemo(() => selectedEntries(input, selectedWords, phraseRanges), [input, selectedWords, phraseRanges])
+  const phrases = useMemo(() => savedPhrases(input, existedWords), [input, existedWords])
+  const locked = addingRevision === revision
   const dragRef = useRef<DragState | null>(null)
   const suppressClick = useRef(false)
-  /** 拖拽过程中的实时高亮区间（未提交） */
   const [liveRange, setLiveRange] = useState<PhraseRange | null>(null)
 
-  const selectionCount = selectedWords.size + phraseRanges.length
-
   useEffect(() => {
+    dragRef.current = null
+    setLiveRange(null)
+    const cancel = () => { dragRef.current = null; setLiveRange(null) }
     const onMove = (e: PointerEvent) => {
       const d = dragRef.current
       if (!d) return
-      if (!d.dragging) {
-        if (Math.abs(e.clientX - d.startX) + Math.abs(e.clientY - d.startY) > DRAG_THRESHOLD_PX) {
-          d.dragging = true
-        } else {
-          return
-        }
-      }
-      setLiveRange(
-        d.startIdx <= d.currentIdx
-          ? { start: d.startIdx, end: d.currentIdx }
-          : { start: d.currentIdx, end: d.startIdx }
-      )
+      if (!d.dragging && Math.abs(e.clientX - d.startX) + Math.abs(e.clientY - d.startY) <= 4) return
+      d.dragging = true
+      setLiveRange({ start: Math.min(d.startIdx, d.currentIdx), end: Math.max(d.startIdx, d.currentIdx) })
     }
-
-    const onUp = (e: PointerEvent) => {
+    const onUp = () => {
       const d = dragRef.current
-      if (!d) return
-      dragRef.current = null
-      setLiveRange(null)
-      if (d.dragging) {
-        // 提交短语（拖拽结束；即使起止同一词也作为短语提交）
+      cancel()
+      if (d?.dragging) {
         suppressClick.current = true
-        addPhraseRange(
-          d.startIdx <= d.currentIdx
-            ? { start: d.startIdx, end: d.currentIdx }
-            : { start: d.currentIdx, end: d.startIdx }
-        )
+        addPhraseRange({ start: Math.min(d.startIdx, d.currentIdx), end: Math.max(d.startIdx, d.currentIdx) })
       }
     }
-
-    const onBlur = () => {
-      // 窗口失焦：取消未提交的拖拽，避免高亮残留
-      dragRef.current = null
-      setLiveRange(null)
-    }
-
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
-    window.addEventListener('blur', onBlur)
+    window.addEventListener('pointercancel', cancel)
+    window.addEventListener('blur', cancel)
     return () => {
+      cancel()
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
-      window.removeEventListener('blur', onBlur)
+      window.removeEventListener('pointercancel', cancel)
+      window.removeEventListener('blur', cancel)
     }
-  }, [addPhraseRange])
+  }, [addPhraseRange, revision])
 
   const startDrag = (idx: number, e: React.PointerEvent) => {
-    // 每次新的按下都复位点击抑制（拖拽提交后置位，避免吞掉下一次正常点击）
+    if (e.button !== 0 || locked) return
     suppressClick.current = false
-    dragRef.current = {
-      startIdx: idx,
-      startX: e.clientX,
-      startY: e.clientY,
-      dragging: false,
-      currentIdx: idx
-    }
+    dragRef.current = { startIdx: idx, startX: e.clientX, startY: e.clientY, dragging: false, currentIdx: idx }
   }
-
-  const updateHover = (idx: number) => {
-    const d = dragRef.current
-    if (!d?.dragging) return
-    d.currentIdx = idx
-  }
-
-  const handleChipClick = (t: WordToken) => {
-    if (suppressClick.current) {
-      suppressClick.current = false
-      return
-    }
-    // 划线只提示「本次已加入」，不拦截：再次加入走 count+1
+  const handleClick = (t: WordToken) => {
+    if (suppressClick.current) { suppressClick.current = false; return }
     toggleWord(t.text.toLowerCase())
   }
-
-  const inLiveRange = (idx: number) =>
-    liveRange !== null && idx >= liveRange.start && idx <= liveRange.end
-  const inCommittedRange = (idx: number) =>
-    phraseRanges.some((r) => idx >= r.start && idx <= r.end)
-
+  const add = async () => {
+    try {
+      const result = await addToVocab()
+      if (!result) return
+      const parts = []
+      if (result.added.length) parts.push(`新收录 ${result.added.length} 条，详情正在生成`)
+      if (result.existed.length) parts.push(`${result.existed.length} 条已收录，出现次数 +1`)
+      toast.success(parts.join('；'))
+    } catch { toast.error('加入失败，已保留选择，请重试') }
+  }
   let wordIdx = -1
-
+  if (!tokens.some((t) => t.type === 'word')) return null
   return (
-    <div className="rounded-lg border bg-card p-3">
-      <div className="mb-2 flex items-center justify-between">
-        <span className="text-xs font-medium text-muted-foreground">
-          原文单词（点击多选，按住拖动选短语，可多段）
-        </span>
-        {selectionCount > 0 && (
-          <Button size="sm" onClick={openConfirm}>
-            加入生词本（{selectionCount}）
-          </Button>
-        )}
+    <section className="min-w-0 rounded-xl border bg-card" aria-label="摘录生词">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b px-3 py-2.5">
+        <div>
+          <h2 className="text-sm font-semibold">摘录生词</h2>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">点选单词 · 拖选短语 · ✓ 已收录</p>
+        </div>
+        <Button size="sm" disabled={!entries.length || adding} onClick={() => void add()}>
+          {adding ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <BookmarkPlus className="h-3.5 w-3.5" />}
+          {adding ? '保存中' : entries.length ? `加入 ${entries.length} 条` : '加入生词本'}
+        </Button>
       </div>
-      <p className={cn('flex flex-wrap items-center gap-y-1.5 text-sm leading-relaxed', (liveRange || phraseRanges.length > 0) && 'select-none')}>
-        {tokens.map((t, i) => {
-          if (t.type === 'text') {
-            return <span key={i}>{t.text}</span>
-          }
-          wordIdx += 1
-          const idx = wordIdx
-          const lower = t.text.toLowerCase()
-          const existed = existedWords.has(lower)
-          const inRange = inLiveRange(idx) || inCommittedRange(idx)
-          const selected = selectedWords.has(lower)
-          return (
-            <button
-              key={i}
-              type="button"
-              title={existed ? `「${t.text}」已在本次句子中加入，可再次加入（次数 +1）` : undefined}
-              className={cn(
-                'mx-0.5 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 transition-colors',
-                inRange && 'border-primary bg-primary text-primary-foreground',
-                !inRange &&
-                  (selected
-                    ? 'cursor-pointer border-primary bg-primary text-primary-foreground'
-                    : existed
-                      ? 'cursor-pointer border-border bg-secondary/60 text-muted-foreground/70 line-through decoration-muted-foreground/40 hover:bg-accent'
-                      : 'cursor-pointer border-border bg-secondary/60 hover:bg-accent')
-              )}
+      <div className="p-3">
+        {catalogStatus !== 'ready' && <p className="mb-2 text-xs text-muted-foreground" role="status">
+          {catalogStatus === 'loading' ? '正在核对收录状态…' : '收录状态暂不可用'}
+          {catalogStatus === 'error' && <button className="ml-2 underline" onClick={() => void refreshCatalog()}>重试</button>}
+        </p>}
+        <div className="max-h-56 overflow-y-auto overscroll-contain whitespace-pre-wrap break-words text-sm leading-[2.4]">
+          {tokens.map((t, i) => {
+            if (t.type === 'text') return <span key={i}>{t.text}</span>
+            const idx = ++wordIdx
+            const lower = t.text.toLowerCase()
+            const existed = existedWords.has(lower)
+            const selected = selectedWords.has(lower) || phraseRanges.some((r) => idx >= r.start && idx <= r.end)
+            const live = liveRange && idx >= liveRange.start && idx <= liveRange.end
+            return <button key={i} type="button" disabled={locked} aria-pressed={selected}
+              title={existed ? `${t.text} · 已收录，再次加入会使出现次数 +1` : `选择 ${t.text}`}
+              className={cn('mx-0.5 inline-flex max-w-full select-none items-center gap-1 rounded-md border px-1.5 py-0.5 align-baseline leading-6 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                selected || live ? 'border-primary bg-primary text-primary-foreground' : existed ? 'border-primary/25 bg-primary/5 text-primary hover:bg-primary/10' : 'border-transparent bg-secondary/60 hover:border-border hover:bg-accent')}
               onPointerDown={(e) => startDrag(idx, e)}
-              onPointerEnter={() => updateHover(idx)}
-              onClick={() => handleChipClick(t)}
-            >
-              {t.text}
-              {existed && !inRange && !selected && <Check className="h-3 w-3" />}
+              onPointerEnter={() => { if (dragRef.current) dragRef.current.currentIdx = idx }}
+              onClick={() => handleClick(t)}>
+              <span className="min-w-0 break-all">{t.text}</span>{existed && <Check className="h-3 w-3 shrink-0" />}
             </button>
-          )
-        })}
-      </p>
-    </div>
+          })}
+        </div>
+        {phrases.length > 0 && <p className="mt-2 break-words text-xs text-primary">已收录短语：{phrases.join(' · ')}</p>}
+      </div>
+      {entries.length > 0 && <div className="space-y-2 border-t bg-muted/30 p-3">
+        <div className="flex items-center justify-between text-xs text-muted-foreground"><span>待加入 {entries.length} 条 · 已去重</span><button disabled={locked} onClick={clearSelection} className="hover:text-foreground">取消选择</button></div>
+        <div className="flex max-h-28 flex-wrap gap-1.5 overflow-y-auto">
+          {entries.map((entry) => <button key={entry.toLowerCase()} disabled={locked} onClick={() => removeSelection(entry)} title={`取消选择 ${entry}`} className="inline-flex max-w-full items-center gap-1 rounded-md border bg-background px-2 py-1 text-xs">
+            <span className="min-w-0 break-words">{entry}</span>{existedWords.has(entry.toLowerCase()) && <span className="shrink-0 text-muted-foreground">+1</span>}<X className="h-3 w-3 shrink-0" />
+          </button>)}
+        </div>
+      </div>}
+    </section>
   )
 }
