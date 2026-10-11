@@ -10,7 +10,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Slider } from '@/components/ui/slider'
 import { Switch } from '@/components/ui/switch'
 import { getActiveLlm } from '@shared/llm'
-import type { ApiType, LlmProviderConfig } from '@shared/types'
+import type { ApiType, LlmProviderConfig, ThemeMode, ThemePalette } from '@shared/types'
+import { cn } from '@/lib/utils'
+
+const PALETTES: [ThemePalette, string][] = [['bamboo', '青竹'], ['indigo', '靛蓝'], ['iris', '鸢尾'], ['amber', '琥珀'], ['cinnabar', '朱砂'], ['graphite', '石墨']]
 import { useSettingsStore } from '@/stores/settingsStore'
 
 const TYPE_LABELS: Record<ApiType, string> = {
@@ -38,7 +41,7 @@ const TYPE_PLACEHOLDERS: Record<ApiType, { baseURL: string; apiKey: string; mode
 }
 
 export function SettingsView() {
-  const { settings, loaded, testing, saveLlm, setLlmType, testConnection, setAlwaysOnTop, setOpacity, setMinimal } =
+  const { settings, loaded, testing, saveLlm, setLlmType, testConnection, setAlwaysOnTop, setOpacity, setMinimal, setAppearance } =
     useSettingsStore()
 
   // LLM 表单草稿：绑定当前类型的配置；切换类型时切换为该类型的已存值
@@ -103,7 +106,8 @@ export function SettingsView() {
   const ph = TYPE_PLACEHOLDERS[type]
 
   return (
-    <div className="flex flex-col gap-3 p-3">
+    <div className="page-shell max-w-3xl">
+      <div className="page-heading"><p className="eyebrow">MAKE IT YOURS</p><h1>你的阅读空间</h1><p>选择喜欢的色彩，连接习惯的模型。</p></div>
       <Card>
         <CardHeader>
           <CardTitle className="text-sm">大模型</CardTitle>
@@ -181,6 +185,23 @@ export function SettingsView() {
           <CardDescription className="text-xs">即时生效并自动保存</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
+          <div className="space-y-2">
+            <Label>主题色</Label>
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+              {PALETTES.map(([key, name]) => <button key={key} data-palette={key} aria-pressed={settings.ui.palette === key}
+                className={cn('flex flex-col items-center gap-2 rounded-xl border px-2 py-3 text-xs transition-colors hover:bg-accent', settings.ui.palette === key && 'border-primary bg-primary/5')}
+                onClick={() => void setAppearance({ palette: key }).catch(() => toast.error('主题色保存失败'))}>
+                <span className="h-5 w-5 rounded-full bg-primary" />{name}
+              </button>)}
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label>明暗模式</Label>
+            <Select value={settings.ui.theme} onValueChange={(theme) => void setAppearance({ theme: theme as ThemeMode }).catch(() => toast.error('外观保存失败'))}>
+              <SelectTrigger aria-label="明暗模式"><SelectValue /></SelectTrigger>
+              <SelectContent><SelectItem value="light">浅色 · 日间阅读</SelectItem><SelectItem value="dark">深色 · 夜间阅读</SelectItem><SelectItem value="system">跟随系统</SelectItem></SelectContent>
+            </Select>
+          </div>
           <div className="flex items-center justify-between">
             <div>
               <Label>极简模式</Label>

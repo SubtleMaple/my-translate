@@ -1,24 +1,26 @@
-import { phraseByWordIndex, tokenize } from './tokenize'
+import type { VocabEntry, VocabSelection } from '@shared/types'
+import { selectionByWordIndex, selectionFromOffsets, selectionKey } from './tokenize'
 
+/** 此范围是单词序号（含端点），与 IPC 的字符偏移区分。 */
 export interface PhraseRange { start: number; end: number }
 
-/** Same unique entries for preview, count and submission. */
-export function selectedEntries(input: string, words: Set<string>, ranges: PhraseRange[]): string[] {
-  const entries = new Map<string, string>()
-  for (const token of tokenize(input)) {
-    if (token.type === 'word' && words.has(token.text.toLowerCase())) {
-      const key = token.text.toLowerCase()
-      if (!entries.has(key)) entries.set(key, token.text)
-    }
+/** 预览、计数、提交共用按位置去重的目标，不合并不同位置的同形词/短语。 */
+export function selectedEntries(input: string, words: Set<number>, ranges: PhraseRange[]): VocabSelection[] {
+  const entries = new Map<string, VocabSelection>()
+  for (const range of [...Array.from(words, (index) => ({ start: index, end: index })), ...ranges]) {
+    const selection = selectionByWordIndex(input, range.start, range.end)
+    if (selection) entries.set(selectionKey(selection), selection)
   }
-  for (const range of ranges) {
-    const phrase = phraseByWordIndex(input, range.start, range.end).trim()
-    if (phrase && !entries.has(phrase.toLowerCase())) entries.set(phrase.toLowerCase(), phrase)
-  }
-  return [...entries.values()]
+  return [...entries.values()].sort((a, b) => a.start - b.start || a.end - b.end)
 }
 
-export function savedPhrases(input: string, known: Set<string>): string[] {
-  const sentence = ` ${tokenize(input).filter((t) => t.type === 'word').map((t) => t.text.toLowerCase()).join(' ')} `
-  return [...known].filter((word) => word.includes(' ') && sentence.includes(` ${word} `))
+/** 只有同一原文且范围准确匹配的来源，才认定该位置已收录。 */
+export function savedSelections(input: string, entries: VocabEntry[]): VocabSelection[] {
+  const saved = new Map<string, VocabSelection>()
+  for (const entry of entries) for (const source of entry.sources || []) {
+    if (source.context !== input || !source.selection) continue
+    const selection = selectionFromOffsets(input, source.selection)
+    if (selection?.text === source.original) saved.set(selectionKey(selection), selection)
+  }
+  return [...saved.values()]
 }

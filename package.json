@@ -1,7 +1,7 @@
 {
   "name": "my-translate",
   "productName": "My Translate",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "英汉翻译 + 生词本 悬浮窗桌面应用",
   "author": "my-translate",
@@ -16,7 +16,14 @@
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json",
     "test": "node tests/run.cjs",
-    "test:electron": "pnpm build && electron tests/electron-flow.cjs"
+    "test:electron": "pnpm build && electron tests/electron-flow.cjs",
+    "test:dictionary": "pnpm build && electron tests/electron-dictionary.cjs",
+    "test:selection": "pnpm build && electron tests/electron-selection.cjs",
+    "test:recommendations": "pnpm build && electron tests/electron-recommendations.cjs",
+    "test:export": "pnpm build && electron tests/electron-export.cjs",
+    "test:review": "pnpm build && electron tests/electron-review.cjs",
+    "test:vocab-visuals": "pnpm build && electron tests/electron-vocab-visuals.cjs",
+    "icons": "electron scripts/generate-icons.cjs"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.23",
@@ -35,6 +42,7 @@
     "sonner": "^1.7.4",
     "sql.js": "^1.12.0",
     "tailwind-merge": "^2.6.0",
+    "ts-fsrs": "5.4.2",
     "zustand": "^5.0.2"
   },
   "devDependencies": {

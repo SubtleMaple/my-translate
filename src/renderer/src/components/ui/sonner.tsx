@@ -12,7 +12,8 @@ function Toaster({ ...props }: ToasterProps) {
   return (
     <Sonner
       position="bottom-center"
-      offset={minimal ? 8 : 60}
+       offset={minimal ? 8 : 72}
+       mobileOffset={minimal ? 8 : 72}
       duration={2400}
       visibleToasts={1}
       className="toaster group"

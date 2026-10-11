@@ -1,10 +1,10 @@
 import { create } from 'zustand'
-import type { TranslateEvent, VocabAddResult } from '@shared/types'
+import type { TranslateEvent, VocabAddResult, VocabEntry, VocabSelection } from '@shared/types'
 import { getActiveLlm } from '@shared/llm'
 import { detectInjection } from '@shared/injection'
 import { checkOutputForInjection } from '@shared/outputCheck'
-import { phraseByWordIndex } from '@/lib/tokenize'
-import { selectedEntries, type PhraseRange } from '@/lib/selection'
+import { selectionByWordIndex, selectionKey } from '@/lib/tokenize'
+import { savedSelections, selectedEntries, type PhraseRange } from '@/lib/selection'
 import { useSettingsStore } from './settingsStore'
 
 export type { PhraseRange } from '@/lib/selection'
@@ -18,10 +18,11 @@ interface TranslateState {
   error: string
   requestId: string | null
   outputWarning: boolean
-  selectedWords: Set<string>
+  selectedWords: Set<number>
   phraseRanges: PhraseRange[]
   /** Full vocabulary index, independent of the list's search filter. */
-  existedWords: Set<string>
+  existedSelections: Set<string>
+  catalogEntries: VocabEntry[]
   catalogStatus: 'loading' | 'ready' | 'error'
   adding: boolean
   addingRevision: number | null
@@ -29,9 +30,9 @@ interface TranslateState {
   translate: () => Promise<void>
   stop: () => void
   clear: () => void
-  toggleWord: (lower: string) => void
+  toggleWord: (index: number) => void
   addPhraseRange: (range: PhraseRange) => void
-  removeSelection: (entry: string) => void
+  removeSelection: (entry: VocabSelection) => void
   clearSelection: () => void
   addToVocab: () => Promise<VocabAddResult | null>
   refreshCatalog: () => Promise<void>
@@ -40,20 +41,24 @@ interface TranslateState {
 }
 
 let catalogRequest = 0
+function knownSelections(entries: VocabEntry[], input: string): Set<string> {
+  return new Set(savedSelections(input, entries).map(selectionKey))
+}
 function abort(requestId: string | null): void {
   if (requestId) void window.api.abortTranslate(requestId).catch(() => { /* late events are ignored */ })
 }
 
 export const useTranslateStore = create<TranslateState>((set, get) => ({
   input: '', revision: 0, status: 'idle', output: '', error: '', requestId: null,
-  outputWarning: false, selectedWords: new Set(), phraseRanges: [], existedWords: new Set(),
-  catalogStatus: 'loading', adding: false, addingRevision: null,
+  outputWarning: false, selectedWords: new Set(), phraseRanges: [], existedSelections: new Set(),
+  catalogStatus: 'loading', catalogEntries: [], adding: false, addingRevision: null,
 
   setInput: (input) => {
     if (input === get().input) return
     const previous = get().requestId
     set((s) => ({ input, revision: s.revision + 1, output: '', error: '', status: 'idle',
-      requestId: null, outputWarning: false, selectedWords: new Set(), phraseRanges: [] }))
+      requestId: null, outputWarning: false, selectedWords: new Set(), phraseRanges: [],
+      existedSelections: knownSelections(s.catalogEntries, input) }))
     abort(previous)
   },
   translate: async () => {
@@ -88,23 +93,24 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
   clear: () => {
     const requestId = get().requestId
     set((s) => ({ input: '', revision: s.revision + 1, output: '', error: '', status: 'idle',
-      requestId: null, outputWarning: false, selectedWords: new Set(), phraseRanges: [] }))
+      requestId: null, outputWarning: false, selectedWords: new Set(), phraseRanges: [], existedSelections: new Set() }))
     abort(requestId)
   },
-  toggleWord: (word) => {
+  toggleWord: (index) => {
     if (get().addingRevision === get().revision) return
-    const lower = word.toLowerCase()
+    if (!selectionByWordIndex(get().input, index)) return
     set((s) => {
       const next = new Set(s.selectedWords)
-      if (next.has(lower)) next.delete(lower)
-      else next.add(lower)
+      if (next.has(index)) next.delete(index)
+      else next.add(index)
       return { selectedWords: next }
     })
   },
   addPhraseRange: (range) => {
     if (get().addingRevision === get().revision) return
+    if (!selectionByWordIndex(get().input, range.start, range.end)) return
     if (range.start === range.end) {
-      get().toggleWord(phraseByWordIndex(get().input, range.start, range.end).toLowerCase())
+      get().toggleWord(range.start)
       return
     }
     set((s) => ({ phraseRanges: s.phraseRanges.some((r) => r.start === range.start && r.end === range.end)
@@ -113,9 +119,12 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
   },
   removeSelection: (entry) => {
     if (get().addingRevision === get().revision) return
-    const lower = entry.toLowerCase()
-    set((s) => ({ selectedWords: new Set([...s.selectedWords].filter((w) => w !== lower)),
-      phraseRanges: s.phraseRanges.filter((r) => phraseByWordIndex(s.input, r.start, r.end).toLowerCase() !== lower) }))
+    const matches = (start: number, end = start) => {
+      const selection = selectionByWordIndex(get().input, start, end)
+      return selection && selectionKey(selection) === selectionKey(entry)
+    }
+    set((s) => ({ selectedWords: new Set([...s.selectedWords].filter((index) => !matches(index))),
+      phraseRanges: s.phraseRanges.filter((r) => !matches(r.start, r.end)) }))
   },
   clearSelection: () => {
     if (get().addingRevision !== get().revision) set({ selectedWords: new Set(), phraseRanges: [] })
@@ -129,8 +138,7 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
       const result = await window.api.addVocab(entries, input)
       catalogRequest += 1
       set((s) => ({
-        existedWords: new Set([...s.existedWords, ...result.added.map((w) => w.toLowerCase()), ...result.existed.map((w) => w.toLowerCase())]),
-        ...(s.revision === revision ? { selectedWords: new Set<string>(), phraseRanges: [] } : {})
+        ...(s.revision === revision ? { selectedWords: new Set<number>(), phraseRanges: [] } : {})
       }))
       void get().refreshCatalog()
       return result
@@ -142,9 +150,9 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
     const request = ++catalogRequest
     try {
       const entries = await window.api.listVocab({})
-      if (request === catalogRequest) set({ existedWords: new Set(entries.map((e) => e.word.trim().toLowerCase())), catalogStatus: 'ready' })
+      if (request === catalogRequest) set({ catalogEntries: entries, existedSelections: knownSelections(entries, get().input), catalogStatus: 'ready' })
     } catch {
-      if (request === catalogRequest) set({ catalogStatus: 'error', existedWords: new Set() })
+      if (request === catalogRequest) set({ catalogStatus: 'error', catalogEntries: [], existedSelections: new Set() })
     }
   },
   handleEvent: (e) => {

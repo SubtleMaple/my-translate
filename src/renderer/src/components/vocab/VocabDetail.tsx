@@ -16,6 +16,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import type { VocabEntry } from '@shared/types'
+import { selectionFromOffsets } from '@shared/tokenize'
 
 /**
  * 生词完整详情：原句回顾 + Markdown 渲染 + 个人备注 + 删除/重新生成
@@ -71,6 +72,24 @@ export function VocabDetail({ entry }: { entry: VocabEntry }) {
 
   return (
     <div className="min-w-0 space-y-3 break-words pt-3 [overflow-wrap:anywhere]">
+      {!!entry.sources?.length && (
+        <details className="rounded-lg bg-primary/5 px-3 py-2 text-xs leading-relaxed">
+          <summary className="cursor-pointer text-primary">摘录来源 · {entry.sources.length} 个词形 / 语境</summary>
+          <div className="mt-2 max-h-48 space-y-3 overflow-y-auto">
+            {entry.sources.map((source, index) => {
+              const selection = source.selection && selectionFromOffsets(source.context, source.selection)
+              return (
+              <div key={index}>
+                <p className="font-medium">{source.original} → {source.word}</p>
+                <p className="text-muted-foreground">{source.explanation}</p>
+                {source.context && <p className="mt-1 whitespace-pre-wrap text-muted-foreground">{selection ? <>
+                  {source.context.slice(0, selection.start)}<mark className="rounded bg-primary/15 px-0.5 font-medium text-primary">{source.context.slice(selection.start, selection.end)}</mark>{source.context.slice(selection.end)}
+                </> : source.context}</p>}
+              </div>
+            )})}
+          </div>
+        </details>
+      )}
       {entry.contextSentence && (
         <div className="max-h-40 overflow-y-auto whitespace-pre-wrap rounded-md bg-muted/60 px-3 py-2 text-xs italic leading-relaxed text-muted-foreground">
           “{entry.contextSentence}”

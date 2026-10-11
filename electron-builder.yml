@@ -10,6 +10,8 @@ files:
 asar: true
 # 托盘图标 / sql.js wasm 运行时需要以文件形式存在（packaged 后取 process.resourcesPath）
 extraResources:
+  - from: build/icon.ico
+    to: icon.ico
   - from: build/tray.ico
     to: tray.ico
   - from: node_modules/sql.js/dist/sql-wasm.wasm

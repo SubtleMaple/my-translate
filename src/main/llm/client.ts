@@ -158,7 +158,7 @@ async function anthropicCompletion(
 export async function chatCompletion(
   settings: LlmSettings,
   messages: ChatMessage[],
-  opts: { maxTokens?: number; timeoutMs?: number } = {}
+  opts: { maxTokens?: number; timeoutMs?: number; signal?: AbortSignal } = {}
 ): Promise<string> {
   const { maxTokens = 1024, timeoutMs = 30000 } = opts
   const { type, config } = getActiveLlm(settings)
@@ -166,6 +166,9 @@ export async function chatCompletion(
     throw new LlmError('尚未配置 API Key，请先到设置页填写')
   }
   const controller = new AbortController()
+  const abort = () => controller.abort()
+  if (opts.signal?.aborted) throw new LlmError('查询已取消')
+  opts.signal?.addEventListener('abort', abort, { once: true })
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
     if (type === 'anthropic') {
@@ -175,11 +178,12 @@ export async function chatCompletion(
   } catch (e) {
     if (e instanceof LlmError) throw e
     if ((e as Error).name === 'AbortError') {
-      throw new LlmError('请求超时，请检查网络或 Base URL')
+      throw new LlmError(opts.signal?.aborted ? '查询已取消' : '请求超时，请检查网络或 Base URL')
     }
     throw new LlmError(`网络连接失败：${(e as Error).message}`)
   } finally {
     clearTimeout(timer)
+    opts.signal?.removeEventListener('abort', abort)
   }
 }
 

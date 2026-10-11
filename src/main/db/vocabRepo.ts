@@ -1,12 +1,13 @@
-import type { VocabAddResult, VocabEntry, VocabQuery, VocabStatus } from '../../shared/types'
+import type { VocabAddResult, VocabEntry, VocabQuery, VocabStatus, WordSource } from '../../shared/types'
 import { getDb } from './database'
 import { markDirty } from './persist'
+import { removeReviewEntry, reviewTransaction } from './reviewRepo'
 
 /**
  * 生词表 CRUD（全部变更必须 markDirty 触发落盘）
  */
 
-const SELECT_COLUMNS = `id, word, word_lower, phonetic, pos, brief, detail, note, status, context_sentence, fail_reason, count, created_at, updated_at`
+const SELECT_COLUMNS = `id, word, word_lower, phonetic, pos, brief, detail, note, status, context_sentence, fail_reason, count, created_at, updated_at, sources`
 
 function toVocabEntry(row: unknown[]): VocabEntry {
   const [
@@ -23,11 +24,13 @@ function toVocabEntry(row: unknown[]): VocabEntry {
     failReason,
     count,
     createdAt,
-    updatedAt
+    updatedAt,
+    sources
   ] = row as unknown[]
   return {
     id: Number(id),
     word: String(word ?? ''),
+    sources: JSON.parse(String(sources || '[]')) as WordSource[],
     phonetic: String(phonetic ?? ''),
     pos: String(pos ?? ''),
     brief: String(brief ?? ''),
@@ -53,8 +56,9 @@ export function listVocab(query: VocabQuery = {}): VocabEntry[] {
   const params: string[] = []
   if (query.search) {
     const term = `%${escapeLike(query.search)}%`
-    clauses.push(`(word LIKE ? ESCAPE '\\' OR brief LIKE ? ESCAPE '\\' OR detail LIKE ? ESCAPE '\\' OR note LIKE ? ESCAPE '\\')`)
-    params.push(term, term, term, term)
+    clauses.push(`(word LIKE ? ESCAPE '\\' OR brief LIKE ? ESCAPE '\\' OR detail LIKE ? ESCAPE '\\' OR note LIKE ? ESCAPE '\\'
+      OR EXISTS (SELECT 1 FROM json_each(vocabulary.sources) AS source WHERE json_extract(source.value, '$.original') LIKE ? ESCAPE '\\'))`)
+    params.push(term, term, term, term, term)
   }
   const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : ''
   const order =
@@ -114,9 +118,43 @@ export function updateVocabNote(id: number, note: string): void {
   markDirty()
 }
 
+export function getVocabByWord(word: string): VocabEntry | null {
+  const stmt = getDb().prepare(`SELECT ${SELECT_COLUMNS} FROM vocabulary WHERE word_lower = ?`)
+  try {
+    stmt.bind([word.trim().toLowerCase()])
+    return stmt.step() ? toVocabEntry(stmt.get()) : null
+  } finally { stmt.free() }
+}
+
+/** 归一完成后一次性提交；同批多个变体共用一个词头、计数一次。 */
+export function addNormalizedVocab(sources: WordSource[], detail?: VocabDetailPatch): VocabAddResult {
+  const db = getDb()
+  db.run('BEGIN TRANSACTION')
+  try {
+    const result = addVocab(sources.map((s) => s.word), sources[0]?.context || '')
+    for (const source of sources) {
+      const entry = getVocabByWord(source.word)!
+      const previous = entry.sources || []
+      if (!previous.some((s) => s.original === source.original && s.context === source.context &&
+          s.selection?.start === source.selection?.start && s.selection?.end === source.selection?.end)) {
+        db.run('UPDATE vocabulary SET sources = ? WHERE id = ?', [JSON.stringify([...previous, source]), entry.id])
+      }
+    }
+    if (detail) for (const id of result.addedIds) updateVocabDetail(id, detail)
+    db.run('COMMIT')
+    markDirty()
+    return { ...result, normalized: sources }
+  } catch (error) {
+    db.run('ROLLBACK')
+    throw error
+  }
+}
+
 export function deleteVocab(id: number): void {
-  getDb().run('DELETE FROM vocabulary WHERE id = ?', [id])
-  markDirty()
+  reviewTransaction(() => {
+    removeReviewEntry(id)
+    getDb().run('DELETE FROM vocabulary WHERE id = ?', [id])
+  })
 }
 
 export function getVocabById(id: number): VocabEntry | null {

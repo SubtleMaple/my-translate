@@ -1,7 +1,8 @@
-import { ipcMain } from 'electron'
+import { app, dialog, ipcMain } from 'electron'
+import { join } from 'node:path'
 
 import { IPC } from '../shared/ipc'
-import type { AppSettings, DeepPartial, VocabQuery } from '../shared/types'
+import type { AppSettings, DeepPartial, VocabQuery, VocabSelection, RecommendationRequest, RecommendationPreference } from '../shared/types'
 import { getSettings, updateSettings } from './settings'
 import { testConnection } from './llm/client'
 import { abortTranslate, runTranslate } from './llm/translate'
@@ -14,7 +15,7 @@ import {
   getMainWindow
 } from './window'
 import {
-  addVocab,
+  addNormalizedVocab,
   deleteVocab,
   listVocab,
   updateVocabNote
@@ -24,6 +25,12 @@ import {
   regenerateDetail,
   setVocabChangedListener
 } from './services/vocabService'
+import { normalizeSelections } from './llm/normalizeWord'
+import { abortLookup, lookupWord, saveLookup } from './services/lookupService'
+import { abortRecommendations, getRecommendations, recommendationFeedback, recommendedLookupTarget, setRecommendationPreference, undoRecommendationFeedback } from './services/recommendationService'
+import { createVocabExporter } from './services/vocabExportService'
+import { createReviewService } from './services/reviewService'
+import { getVocabViewEntry, queryVocabView } from './services/vocabViewService'
 
 /**
  * 集中注册全部 IPC handler
@@ -67,6 +74,26 @@ export function registerIpcHandlers(): void {
 
   // ---------- llm ----------
   ipcMain.handle(IPC.LlmTestConnection, () => testConnection(getSettings().llm))
+  ipcMain.handle(IPC.LlmLookup, (_e, id: string, word: string) => {
+    abortRecommendations()
+    return lookupWord(id, word)
+  })
+  ipcMain.handle(IPC.LlmLookupAbort, (_e, id: string) => abortLookup(id))
+  ipcMain.handle(IPC.RecommendationGet, (_e, request?: RecommendationRequest) => getRecommendations(request))
+  ipcMain.handle(IPC.RecommendationAbort, () => abortRecommendations())
+  ipcMain.handle(IPC.RecommendationFeedback, (_e, id: string, kind: 'known' | 'skip') => recommendationFeedback(id, kind))
+  ipcMain.handle(IPC.RecommendationUndo, (_e, word: string) => undoRecommendationFeedback(word))
+  ipcMain.handle(IPC.RecommendationPreference, (_e, patch: RecommendationPreference) => setRecommendationPreference(patch))
+  ipcMain.handle(IPC.RecommendationLookup, (_e, requestId: string, id: string) => {
+    abortRecommendations()
+    const item = recommendedLookupTarget(id)
+    return lookupWord(requestId, item.word, { pos: item.pos, meaning: item.meaning })
+  })
+  ipcMain.handle(IPC.LookupSave, (_e, id: string) => {
+    const result = saveLookup(id)
+    broadcastVocabChanged()
+    return result
+  })
 
   ipcMain.handle(IPC.LlmTranslate, (_e, requestId: string, text: string) => {
     // 事件流经 webContents.send 推送给发起请求的窗口
@@ -82,9 +109,39 @@ export function registerIpcHandlers(): void {
 
   // ---------- vocab ----------
   ipcMain.handle(IPC.VocabList, (_e, query: VocabQuery = {}) => listVocab(query))
+  ipcMain.handle(IPC.VocabViewQuery, (_e, query) => queryVocabView(query))
+  ipcMain.handle(IPC.VocabViewEntry, (_e, id: number) => getVocabViewEntry(id))
+  const exportVocab = createVocabExporter({
+    readAll: () => listVocab({ sortBy: 'alpha' }),
+    appVersion: () => app.getVersion(),
+    chooseFile: async (format, defaultName) => {
+      const win = getMainWindow()
+      if (!win || win.isDestroyed()) throw Error('窗口不可用')
+      const result = await dialog.showSaveDialog(win, {
+        title: '导出全部词条',
+        defaultPath: join(app.getPath('documents'), defaultName),
+        buttonLabel: '导出',
+        filters: [{ name: format === 'json' ? 'JSON 完整词库' : 'CSV 表格数据', extensions: [format] }],
+        properties: ['showOverwriteConfirmation', 'createDirectory']
+      })
+      return result.canceled ? null : result.filePath || null
+    }
+  })
+  ipcMain.handle(IPC.VocabExport, (_e, format) => exportVocab(format))
 
-  ipcMain.handle(IPC.VocabAdd, (_e, words: string[], contextSentence: string) => {
-    const result = addVocab(words, contextSentence)
+  const review = createReviewService(undefined, undefined, () => getMainWindow()?.webContents.send(IPC.ReviewChanged))
+  ipcMain.handle(IPC.ReviewOverview, (_e, search) => review.overview(search))
+  ipcMain.handle(IPC.ReviewStart, (_e, config) => review.start(config))
+  ipcMain.handle(IPC.ReviewGet, (_e, id) => review.get(id))
+  ipcMain.handle(IPC.ReviewReveal, (_e, command) => review.reveal(command))
+  ipcMain.handle(IPC.ReviewRate, (_e, command, rating) => review.rate(command, rating))
+  ipcMain.handle(IPC.ReviewSkip, (_e, command) => review.skip(command))
+  ipcMain.handle(IPC.ReviewUndo, (_e, id, revision) => review.undo(id, revision))
+  ipcMain.handle(IPC.ReviewEnd, (_e, id, revision) => review.end(id, revision))
+
+  ipcMain.handle(IPC.VocabAdd, async (_e, selections: VocabSelection[], contextSentence: string) => {
+    const sources = await normalizeSelections(selections, contextSentence, getSettings().llm)
+    const result = addNormalizedVocab(sources)
     // 详情生成队列在后台串行跑，不阻塞本次 invoke 返回
     for (const id of result.addedIds) enqueueDetail(id)
     broadcastVocabChanged()

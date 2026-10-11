@@ -7,10 +7,89 @@
 
 export type VocabStatus = 'pending' | 'ready' | 'failed'
 
+/** 原文中的 UTF-16 字符范围：[start, end)，与 JS String.slice 一致。 */
+export interface TextRange { start: number; end: number }
+
+export interface VocabSelection extends TextRange {
+  /** 选中范围内的单词按空格连接；相同文本的不同位置是不同目标。 */
+  text: string
+}
+
+export interface WordSource {
+  original: string
+  word: string
+  explanation: string
+  context: string
+  /** 旧来源和无上下文查词可缺省；不得据此推断所有同形词已收录。 */
+  selection?: TextRange
+}
+
+export interface WordLookup extends WordSource {
+  /** 主进程暂存结果的标识，收藏只接受该标识 */
+  id: string
+  phonetic: string
+  pos: string
+  brief: string
+  detail: string
+}
+
+// ---------------------------------------------------------------- 个性化推荐（等级是模型估计，不是能力测评）
+export const CEFR_LEVELS = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'] as const
+export type CefrLevel = (typeof CEFR_LEVELS)[number]
+export const RECOMMENDATION_TOPICS = ['general', 'daily', 'technology', 'business', 'science', 'literature', 'academic', 'health', 'travel'] as const
+export type RecommendationTopic = (typeof RECOMMENDATION_TOPICS)[number]
+export const TOPIC_LABELS: Record<RecommendationTopic, string> = {
+  general: '通用阅读', daily: '日常生活', technology: '科技', business: '商务经济', science: '科学',
+  literature: '文学', academic: '学术', health: '健康', travel: '旅行'
+}
+export interface WordSenseHint { pos: string; meaning: string }
+export interface WordRecommendation extends WordSenseHint {
+  id: string
+  word: string
+  forms: string[]
+  family: string
+  level: CefrLevel
+  topic: RecommendationTopic
+  reason: string
+  /** 模型估计的实用性 1–5，用于本地排序 */
+  utility: number
+}
+export interface RecommendationFeedback {
+  word: string
+  kind: 'known' | 'skip'
+  topic: RecommendationTopic
+  updatedAt: number
+}
+export interface RecommendationPage {
+  items: WordRecommendation[]
+  estimatedLevel: CefrLevel | null
+  targetLevel: CefrLevel
+  coldLevel: CefrLevel | null
+  adjustment: number
+  topics: RecommendationTopic[]
+  sampleSize: number
+  totalWords: number
+  needsLevel: boolean
+  stale: boolean
+  canGenerate: boolean
+  generatedAt: number
+  message: string
+  feedback: RecommendationFeedback[]
+}
+export interface RecommendationRequest {
+  action?: 'current' | 'next' | 'refresh'
+  allowGenerate?: boolean
+}
+export interface RecommendationPreference {
+  coldLevel?: CefrLevel
+  difficulty?: 'easy' | 'right' | 'hard'
+}
+
 export interface VocabEntry {
   id: number
-  /** 原始选中的词形（保留大小写） */
+  /** 词典词头；旧记录保持原样 */
   word: string
+  sources?: WordSource[]
   phonetic: string
   /** 词性 */
   pos: string
@@ -33,14 +112,47 @@ export interface VocabEntry {
   updatedAt: number
 }
 
-export type VocabSortBy = 'time' | 'alpha' | 'count'
+export type VocabBaseSortBy = 'time' | 'alpha' | 'count'
+export type VocabSortBy = VocabBaseSortBy | 'unfamiliar' | 'familiar' | 'risk'
 
 export interface VocabQuery {
   search?: string
-  sortBy?: VocabSortBy
+  sortBy?: VocabBaseSortBy
+}
+
+export const LEARNING_STAGES = ['fragile', 'learning', 'developing', 'stable', 'unseen'] as const
+export type LearningStage = (typeof LEARNING_STAGES)[number]
+export type LearningFilter = 'all' | LearningStage
+export type VocabViewMode = 'list' | 'cloud' | 'groups'
+export type CloudMetric = 'weakness' | 'count' | 'familiarity'
+export interface LearningSummary {
+  stage: LearningStage
+  hasReview: boolean
+  limitedEvidence: boolean
+  reviewCount: number
+  forgottenCount: number
+  successCount: number
+  stabilityDays: number | null
+  recall: number | null
+  risk: number | null
+  lastRating: ReviewRating | null
+  lastReviewAt: number | null
+  dueAt: number | null
+  due: boolean
+  unavailable: boolean
+}
+export interface VocabViewEntry extends VocabEntry { learning: LearningSummary }
+export interface VocabViewQuery { search?: string; sortBy?: VocabSortBy; learningFilter?: LearningFilter }
+export interface VocabViewData {
+  entries: VocabViewEntry[]
+  evaluatedAt: number
+  /** 当前搜索范围内、应用学习状态筛选前的各组数量 */
+  stageCounts: Record<LearningStage, number>
+  matchedCount: number
 }
 
 export interface VocabAddResult {
+  normalized?: WordSource[]
   /** 成功加入（进入详情生成队列）的词 */
   added: string[]
   /** 已存在且出现次数 +1 的词（不重复生成详情） */
@@ -48,6 +160,52 @@ export interface VocabAddResult {
   /** 成功加入记录的 id（与 added 一一对应，主进程据此自动入队生成详情） */
   addedIds: number[]
 }
+
+export type VocabExportFormat = 'json' | 'csv'
+export type VocabExportResult =
+  | { status: 'saved'; format: VocabExportFormat; filePath: string; count: number }
+  | { status: 'cancelled' }
+  | { status: 'empty' }
+  | { status: 'error'; message: string }
+
+// ---------------------------------------------------------------- 本地自测 / 间隔复习
+export type ReviewRating = 1 | 2 | 3 | 4
+export type ReviewMode = 'smart' | 'random'
+export interface ReviewConfig { mode: ReviewMode; size: number; search?: string }
+export interface ReviewQuestion { id: string; entryId: number; word: string; repeat: number }
+export type ReviewAnswer = Pick<VocabEntry, 'phonetic' | 'pos' | 'brief' | 'detail' | 'note' | 'contextSentence'>
+export interface ReviewSummary {
+  firstRatings: Record<ReviewRating, number>
+  firstRated: number
+  skipped: number
+  extraAnswered: number
+  unavailable: number
+  deferred: number
+  needsWork: { entryId: number; word: string; rating: ReviewRating; dueAt: number }[]
+}
+export interface ReviewSessionView {
+  id: string
+  revision: number
+  status: 'active' | 'completed' | 'ended'
+  config: ReviewConfig
+  total: number
+  processed: number
+  question: ReviewQuestion | null
+  answer: ReviewAnswer | null
+  preview: Record<ReviewRating, number> | null
+  serverNow: number
+  canUndo: boolean
+  summary: ReviewSummary
+}
+export interface ReviewOverview {
+  eligible: number
+  due: number
+  fresh: number
+  unavailable: number
+  active: ReviewSessionView | null
+}
+/** 题目ID+revision防止迟到请求或重复评分作用于另一题。 */
+export interface ReviewCommand { sessionId: string; questionId: string; revision: number }
 
 // ---------------------------------------------------------------- 设置
 
@@ -90,12 +248,13 @@ export interface WindowSettings {
 }
 
 export type ThemeMode = 'light' | 'dark' | 'system'
+export type ThemePalette = 'bamboo' | 'indigo' | 'iris' | 'amber' | 'cinnabar' | 'graphite'
 
 export interface AppSettings {
   llm: LlmSettings
   window: WindowSettings
-  ui: { theme: ThemeMode; minimal: boolean }
-  vocab: { sortBy: VocabSortBy }
+  ui: { theme: ThemeMode; minimal: boolean; palette: ThemePalette }
+  vocab: { sortBy: VocabSortBy; view: VocabViewMode; cloudMetric: CloudMetric }
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -119,8 +278,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
     opacity: 1.0,
     bounds: null
   },
-  ui: { theme: 'system', minimal: false },
-  vocab: { sortBy: 'time' }
+  ui: { theme: 'system', minimal: false, palette: 'bamboo' },
+  vocab: { sortBy: 'time', view: 'list', cloudMetric: 'weakness' }
 }
 
 // ---------------------------------------------------------------- 工具
@@ -171,6 +330,15 @@ export interface RendererApi {
 
   // ---- llm ----
   testConnection(): Promise<TestConnectionResult>
+  lookupWord(requestId: string, word: string): Promise<WordLookup>
+  lookupRecommendation(requestId: string, recommendationId: string): Promise<WordLookup>
+  getRecommendations(request?: RecommendationRequest): Promise<RecommendationPage>
+  abortRecommendations(): Promise<void>
+  recommendationFeedback(id: string, kind: 'known' | 'skip'): Promise<RecommendationPage>
+  undoRecommendationFeedback(word: string): Promise<RecommendationPage>
+  setRecommendationPreference(patch: RecommendationPreference): Promise<RecommendationPage>
+  abortLookup(requestId: string): Promise<void>
+  saveLookup(id: string): Promise<VocabAddResult>
   /** 发起流式翻译，结果经 onTranslateEvent 推送 */
   translate(requestId: string, text: string): Promise<void>
   abortTranslate(requestId: string): Promise<void>
@@ -179,13 +347,28 @@ export interface RendererApi {
 
   // ---- vocab ----
   listVocab(query: VocabQuery): Promise<VocabEntry[]>
-  addVocab(words: string[], contextSentence: string): Promise<VocabAddResult>
+  queryVocabView(query: VocabViewQuery): Promise<VocabViewData>
+  getVocabViewEntry(id: number): Promise<{ entry: VocabViewEntry | null; evaluatedAt: number }>
+  onReviewChanged(cb: () => void): () => void
+  /** 主进程打开保存窗口，导出完整词库（不接受路径或搜索条件）。 */
+  exportVocab(format: VocabExportFormat): Promise<VocabExportResult>
+  addVocab(selections: VocabSelection[], contextSentence: string): Promise<VocabAddResult>
   updateVocabNote(id: number, note: string): Promise<void>
   deleteVocab(id: number): Promise<void>
   /** 订阅生词数据变更（增删/详情生成完成等主进程广播）；返回取消订阅函数 */
   onVocabChanged(cb: () => void): () => void
   /** 重新生成指定词的详情（失败重试 / 已 ready 词重新生成），主进程置回 pending 并入队 */
   regenerateDetail(id: number): Promise<void>
+
+  // ---- review ----
+  reviewOverview(search?: string): Promise<ReviewOverview>
+  startReview(config: ReviewConfig): Promise<ReviewSessionView>
+  getReview(sessionId: string): Promise<ReviewSessionView>
+  revealReview(command: ReviewCommand): Promise<ReviewSessionView>
+  rateReview(command: ReviewCommand, rating: ReviewRating): Promise<ReviewSessionView>
+  skipReview(command: ReviewCommand): Promise<ReviewSessionView>
+  undoReview(sessionId: string, revision: number): Promise<ReviewSessionView>
+  endReview(sessionId: string, revision: number): Promise<ReviewSessionView>
 
   // ---- window ----
   setAlwaysOnTop(flag: boolean): Promise<void>

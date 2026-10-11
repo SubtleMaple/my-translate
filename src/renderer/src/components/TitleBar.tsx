@@ -1,4 +1,5 @@
-import { Languages, Maximize2, Minus, Minimize2, Moon, Pin, PinOff, Sun, X } from 'lucide-react'
+import { Maximize2, Minus, Minimize2, Moon, Pin, PinOff, Sun, X } from 'lucide-react'
+import { BrandMark } from './BrandMark'
 
 import { cn } from '@/lib/utils'
 import { useSettingsStore } from '@/stores/settingsStore'
@@ -19,10 +20,10 @@ export function TitleBar() {
   const setMinimal = useSettingsStore((s) => s.setMinimal)
 
   return (
-    <header className="drag flex h-9 shrink-0 select-none items-center justify-between border-b pl-3 pr-1.5">
+    <header className="drag flex h-9 shrink-0 select-none items-center justify-between border-b border-border/70 bg-card/60 pl-3 pr-1.5">
       <div className="flex min-w-0 items-center gap-1.5 text-xs font-semibold">
-        <Languages className="h-3.5 w-3.5" />
-        <span className="truncate">{minimal ? '译' : '译 · 生词本'}</span>
+        <BrandMark className="h-5 w-5 shrink-0 text-primary" />
+        <span className="truncate tracking-wide">{minimal ? '译' : '译 · My Translate'}</span>
       </div>
       <div className="flex shrink-0 items-center gap-0.5">
         <button

@@ -1,11 +1,10 @@
 import { create } from 'zustand'
+import { toast } from 'sonner'
+import { useSettingsStore } from './settingsStore'
 
-export type AppView = 'translate' | 'vocab' | 'settings'
+export type AppView = 'translate' | 'lookup' | 'vocab' | 'settings'
 
-/**
- * 界面状态
- * 深色模式 Phase 6 将改为「浅色/深色/跟随系统」并持久化到设置
- */
+/** 临时界面状态；主题偏好由 settingsStore 持久化，ThemeSync 同步系统。 */
 type UiState = {
   dark: boolean
   toggleDark: () => void
@@ -17,8 +16,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   dark: false,
   toggleDark: () => {
     const next = !get().dark
-    document.documentElement.classList.toggle('dark', next)
-    set({ dark: next })
+    void useSettingsStore.getState().setAppearance({ theme: next ? 'dark' : 'light' }).catch(() => toast.error('外观保存失败'))
   },
   view: 'translate',
   setView: (v) => set({ view: v })
