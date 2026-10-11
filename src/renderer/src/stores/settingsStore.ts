@@ -6,6 +6,8 @@ import {
   type AppSettings,
   type LlmSettings,
   type TestConnectionResult,
+  type ThemeMode,
+  type ThemePalette,
   type VocabSortBy
 } from '@shared/types'
 
@@ -22,13 +24,17 @@ type SettingsState = {
   setOpacity: (value: number) => Promise<void>
   /** 极简模式开关（持久化，立即生效） */
   setMinimal: (flag: boolean) => Promise<void>
+  setAppearance: (patch: { theme?: ThemeMode; palette?: ThemePalette }) => Promise<void>
   /** 生词本排序偏好（乐观更新 + 持久化，保持本地与主进程一致） */
   setVocabSortBy: (sortBy: VocabSortBy) => Promise<void>
+  setVocabDisplay: (patch: Partial<Pick<AppSettings['vocab'], 'view' | 'cloudMetric'>>) => Promise<void>
   /** 托盘菜单切换置顶时，主进程广播同步 */
   syncAlwaysOnTop: (flag: boolean) => void
 }
 
-export const useSettingsStore = create<SettingsState>((set) => ({
+let appearanceRevision = 0
+const displayRevision = { view: 0, cloudMetric: 0 }
+export const useSettingsStore = create<SettingsState>((set, get) => ({
   settings: DEFAULT_SETTINGS,
   loaded: false,
   testing: false,
@@ -79,11 +85,39 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     await window.api.setSettings({ ui: { minimal: flag } })
   },
 
+  setAppearance: async (patch) => {
+    const revision = ++appearanceRevision
+    const previous = get().settings.ui
+    set((s) => ({ settings: { ...s.settings, ui: { ...s.settings.ui, ...patch } } }))
+    try { await window.api.setSettings({ ui: patch }) }
+    catch (e) {
+      if (revision === appearanceRevision) set((s) => ({ settings: { ...s.settings, ui: { ...s.settings.ui, theme: previous.theme, palette: previous.palette } } }))
+      throw e
+    }
+  },
+
   setVocabSortBy: async (sortBy) => {
     set((state) => ({
       settings: { ...state.settings, vocab: { ...state.settings.vocab, sortBy } }
     }))
     await window.api.setSettings({ vocab: { sortBy } })
+  },
+
+  setVocabDisplay: async (patch) => {
+    const before = get().settings.vocab
+    const keys = Object.keys(patch) as (keyof typeof displayRevision)[]
+    const revisions = new Map(keys.map(key => [key, ++displayRevision[key]]))
+    set(s => ({ settings: { ...s.settings, vocab: { ...s.settings.vocab, ...patch } } }))
+    try { await window.api.setSettings({ vocab: patch }) }
+    catch (e) {
+      set(s => {
+        const vocab = { ...s.settings.vocab }
+        if (revisions.get('view') === displayRevision.view) vocab.view = before.view
+        if (revisions.get('cloudMetric') === displayRevision.cloudMetric) vocab.cloudMetric = before.cloudMetric
+        return { settings: { ...s.settings, vocab } }
+      })
+      throw e
+    }
   },
 
   syncAlwaysOnTop: (flag) => {

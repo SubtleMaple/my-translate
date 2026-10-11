@@ -12,6 +12,15 @@ export const IPC = {
   LlmTranslateAbort: 'llm:translate:abort',
   LlmTestConnection: 'llm:test-connection',
   LlmRegenerateDetail: 'llm:regenerate-detail',
+  LlmLookup: 'llm:lookup',
+  LlmLookupAbort: 'llm:lookup:abort',
+  LookupSave: 'lookup:save',
+  RecommendationGet: 'recommendation:get',
+  RecommendationAbort: 'recommendation:abort',
+  RecommendationFeedback: 'recommendation:feedback',
+  RecommendationUndo: 'recommendation:undo',
+  RecommendationPreference: 'recommendation:preference',
+  RecommendationLookup: 'recommendation:lookup',
   // 主 → 渲染（webContents.send）
   LlmTranslateChunk: 'llm:translate:chunk',
   LlmTranslateDone: 'llm:translate:done',
@@ -19,11 +28,24 @@ export const IPC = {
 
   // ---------- vocab ----------
   VocabList: 'vocab:list',
-  VocabAdd: 'vocab:add',
+  VocabViewQuery: 'vocab:view-query',
+  VocabViewEntry: 'vocab:view-entry',
+  VocabExport: 'vocab:export',
+  VocabAdd: 'vocab:add', // VocabSelection[] + 原文，必须携带每个目标的位置
   VocabUpdateNote: 'vocab:update-note',
   VocabDelete: 'vocab:delete',
   // 主 → 渲染
   VocabChanged: 'vocab:changed',
+
+  ReviewOverview: 'review:overview',
+  ReviewStart: 'review:start',
+  ReviewGet: 'review:get',
+  ReviewReveal: 'review:reveal',
+  ReviewRate: 'review:rate',
+  ReviewSkip: 'review:skip',
+  ReviewUndo: 'review:undo',
+  ReviewEnd: 'review:end',
+  ReviewChanged: 'review:changed',
 
   // ---------- window ----------
   WindowSetAlwaysOnTop: 'window:set-always-on-top',

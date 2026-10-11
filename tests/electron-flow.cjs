@@ -82,7 +82,10 @@ async function main() {
       }
       res.end('data: [DONE]\n\n')
     } else {
-      const content = JSON.stringify({ phonetic: '/ˈsɪnθətɪk/', pos: 'n.', brief: '合成测试释义；'.repeat(8), usage: '学习用法。'.repeat(80), examples: [{ en: 'A synthetic example '.repeat(50), zh: '这是示例。'.repeat(30) }], synonyms: ['example'], antonyms: [], memory: '仅测试数据' })
+      const user = body.messages.find(m => m.role === 'user').content
+      const content = user.startsWith('{"targets":')
+        ? JSON.stringify({ entries: JSON.parse(user).targets.map(({ id, original }) => ({ id, original, word: original, explanation: '测试保留词头' })) })
+        : JSON.stringify({ phonetic: '/ˈsɪnθətɪk/', pos: 'n.', brief: '合成测试释义；'.repeat(8), usage: '学习用法。'.repeat(80), examples: [{ en: 'A synthetic example '.repeat(50), zh: '这是示例。'.repeat(30) }], synonyms: ['example'], antonyms: [], memory: '仅测试数据' })
       res.writeHead(200, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify({ choices: [{ message: { content } }] }))
     }
@@ -151,7 +154,7 @@ async function main() {
   await click('加入 1 条')
   await until(() => evaluate(async () => (await window.api.listVocab({})).length >= 2), 'UI drag phrase persisted')
   assert.ok(await evaluate(async () => (await window.api.listVocab({})).some(e => e.word === 'bright ideas')), 'drag selection saves exact phrase')
-  const added = await evaluate(() => window.api.addVocab(['Reading'], 'A long source '.repeat(80)))
+  const added = await evaluate(() => window.api.addVocab([{ text: 'Reading', start: 0, end: 7 }], 'Reading ' + 'A long source '.repeat(80)))
   assert.deepEqual(added.existed, ['Reading'])
   await until(() => evaluate(async () => (await window.api.listVocab({})).every(e => e.status === 'ready')), 'phrase generated')
   const entries = await evaluate(() => window.api.listVocab({}))

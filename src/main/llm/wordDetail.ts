@@ -1,4 +1,5 @@
-import type { LlmSettings } from '../../shared/types'
+import type { LlmSettings, VocabSelection, WordSenseHint } from '../../shared/types'
+import { selectionFromOffsets } from '../../shared/tokenize'
 import { getActiveLlm } from '../../shared/llm'
 import { detectInjection } from '../../shared/injection'
 import { chatCompletion, LlmError } from './client'
@@ -148,19 +149,24 @@ export interface GeneratedDetail {
 export async function generateWordDetail(
   word: string,
   contextSentence: string,
-  settings: LlmSettings
+  settings: LlmSettings,
+  signal?: AbortSignal,
+  selection?: VocabSelection,
+  sense?: WordSenseHint
 ): Promise<GeneratedDetail> {
   // 原句命中注入检测则省略（仅歧义用途，省略零成本；单词本身照常生成）
   const safeContext = detectInjection(contextSentence).blocked ? '' : contextSentence
+  const matched = safeContext && selection ? selectionFromOffsets(safeContext, selection) : null
+  const safeSelection = matched?.text === selection?.text ? matched || undefined : undefined
   // anthropic 思考型模型需预留 thinking 预算，max_tokens 加大
   const maxTokens = getActiveLlm(settings).type === 'anthropic' ? 2000 : 800
   const content = await chatCompletion(
     settings,
     [
       { role: 'system', content: buildDetailSystemPrompt() },
-      { role: 'user', content: buildDetailUserPrompt(word, safeContext) }
+      { role: 'user', content: buildDetailUserPrompt(word, safeContext, safeSelection, sense && !detectInjection(JSON.stringify(sense)).blocked ? sense : undefined) }
     ],
-    { maxTokens, timeoutMs: 60_000 }
+    { maxTokens, timeoutMs: 60_000, signal }
   )
 
   const fields = parseDetailJson(content)

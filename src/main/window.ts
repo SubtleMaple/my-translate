@@ -78,6 +78,7 @@ export function createMainWindow(): BrowserWindow {
     frame: false,
     resizable: true,
     show: false,
+    icon: app.isPackaged ? join(process.resourcesPath, 'icon.ico') : join(app.getAppPath(), 'build', 'icon.ico'),
     backgroundColor: '#ffffff',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),

@@ -98,9 +98,9 @@ export function TranslateView() {
     </div>
   </div>
 
-  return <div className="mx-auto flex w-full max-w-5xl flex-col gap-3 p-3 sm:p-5" onKeyDown={keyboard}>
+  return <div className="page-shell max-w-5xl" onKeyDown={keyboard}>
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <div><h1 className="text-base font-semibold tracking-tight">读懂，再记住</h1><p className="mt-0.5 hidden text-xs text-muted-foreground sm:block">翻译英文，留住值得复习的词。</p></div>
+      <div className="page-heading"><p className="eyebrow">READ · UNDERSTAND · KEEP</p><h1>读懂，再记住</h1><p className="hidden sm:block">翻译英文，留住值得复习的词。</p></div>
       <Button size="sm" variant="outline" disabled={pasting} title="替换为剪贴板文本并翻译 (Ctrl+Shift+V)" onClick={() => void paste(true)}><ClipboardPaste className="h-3.5 w-3.5" />粘贴并翻译</Button>
     </div>
     <div className="grid min-w-0 gap-3 md:grid-cols-2">

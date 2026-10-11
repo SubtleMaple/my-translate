@@ -1,5 +1,7 @@
 import { useEffect } from 'react'
-import { BookOpen, Languages, Loader2, Settings } from 'lucide-react'
+import { BookOpen, Languages, Loader2, Search, Settings } from 'lucide-react'
+import { LookupView } from '@/components/lookup/LookupView'
+import { ThemeSync } from '@/components/ThemeSync'
 
 import { TitleBar } from '@/components/TitleBar'
 import { SettingsView } from '@/components/settings/SettingsView'
@@ -14,6 +16,7 @@ import { useVocabStore } from '@/stores/vocabStore'
 
 const NAV_ITEMS: { key: AppView; label: string; icon: typeof Languages }[] = [
   { key: 'translate', label: '翻译', icon: Languages },
+  { key: 'lookup', label: '查词', icon: Search },
   { key: 'vocab', label: '生词本', icon: BookOpen },
   { key: 'settings', label: '设置', icon: Settings }
 ]
@@ -56,6 +59,7 @@ export default function App() {
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
+      <ThemeSync />
       <TitleBar />
       <main className={cn('min-h-0 min-w-0 flex-1', minimal || view === 'vocab' ? 'overflow-hidden' : 'overflow-y-auto')}>
         {!loaded ? (
@@ -65,19 +69,20 @@ export default function App() {
         ) : (
           <>
             {view === 'translate' && <TranslateView />}
+            {!minimal && view === 'lookup' && <LookupView />}
             {view === 'vocab' && <VocabView />}
             {view === 'settings' && <SettingsView />}
           </>
         )}
       </main>
       {!minimal && (
-        <nav aria-label="主导航" className="flex h-12 shrink-0 items-stretch border-t bg-card">
+        <nav aria-label="主导航" className="flex h-14 shrink-0 items-stretch gap-1 border-t bg-card/90 px-2 py-1.5">
         {NAV_ITEMS.map(({ key, label, icon: Icon }) => (
           <button
             key={key}
             className={cn(
-              'flex flex-1 flex-col items-center justify-center gap-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-accent/60',
-              view === key && 'bg-primary/5 text-primary'
+              'flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-lg text-[11px] text-muted-foreground transition-colors hover:bg-accent/60',
+              view === key && 'bg-primary/10 font-semibold text-primary'
             )}
             onClick={() => setView(key)}
             aria-current={view === key ? 'page' : undefined}

@@ -4,49 +4,86 @@
 
 @layer base {
   :root {
-    --background: 210 20% 98%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --background: 40 23% 97%;
+    --foreground: 210 16% 17%;
+    --card: 40 30% 99%;
+    --card-foreground: 210 16% 17%;
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
     --primary: 172 65% 27%;
     --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
+    --secondary: 40 16% 93%;
     --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
+    --muted: 40 16% 93%;
     --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
+    --accent: 40 16% 93%;
     --accent-foreground: 222.2 47.4% 11.2%;
     --destructive: 0 72% 43%;
     --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
+    --border: 40 12% 87%;
+    --input: 40 12% 87%;
     --ring: 172 65% 27%;
     --radius: 0.75rem;
+    --learning-warm: 32 72% 32%;
   }
 
   .dark {
-    --background: 220 24% 9%;
+    --background: 210 12% 10%;
     --foreground: 210 40% 98%;
-    --card: 220 22% 12%;
+    --card: 210 10% 13%;
     --card-foreground: 210 40% 98%;
-    --popover: 220 22% 12%;
+    --popover: 210 10% 13%;
     --popover-foreground: 210 40% 98%;
     --primary: 168 55% 65%;
     --primary-foreground: 172 65% 10%;
-    --secondary: 217.2 32.6% 17.5%;
+    --secondary: 210 9% 19%;
     --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
+    --muted: 210 9% 19%;
     --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
+    --accent: 210 9% 19%;
     --accent-foreground: 210 40% 98%;
     --destructive: 0 72% 65%;
     --destructive-foreground: 220 24% 9%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
+    --border: 210 8% 24%;
+    --input: 210 8% 24%;
     --ring: 168 55% 65%;
+    --learning-warm: 36 65% 68%;
   }
+}
+
+/* 配色令牌同时用于根主题与设置页色板；所有组件只消费语义变量。 */
+[data-palette='bamboo'] { --primary: 172 55% 28%; --ring: 172 55% 28%; }
+[data-palette='indigo'] { --primary: 222 60% 45%; --ring: 222 60% 45%; }
+[data-palette='iris'] { --primary: 267 38% 45%; --ring: 267 38% 45%; }
+[data-palette='amber'] { --primary: 32 72% 32%; --ring: 32 72% 32%; }
+[data-palette='cinnabar'] { --primary: 9 53% 42%; --ring: 9 53% 42%; }
+[data-palette='graphite'] { --primary: 215 10% 34%; --ring: 215 10% 34%; }
+.dark[data-palette], .dark [data-palette] { --primary-foreground: 210 12% 10%; }
+.dark[data-palette='bamboo'], .dark [data-palette='bamboo'] { --primary: 168 42% 68%; --ring: 168 42% 68%; }
+.dark[data-palette='indigo'], .dark [data-palette='indigo'] { --primary: 220 72% 76%; --ring: 220 72% 76%; }
+.dark[data-palette='iris'], .dark [data-palette='iris'] { --primary: 267 56% 77%; --ring: 267 56% 77%; }
+.dark[data-palette='amber'], .dark [data-palette='amber'] { --primary: 36 65% 68%; --ring: 36 65% 68%; }
+.dark[data-palette='cinnabar'], .dark [data-palette='cinnabar'] { --primary: 12 65% 73%; --ring: 12 65% 73%; }
+.dark[data-palette='graphite'], .dark [data-palette='graphite'] { --primary: 215 12% 76%; --ring: 215 12% 76%; }
+
+@layer components {
+  [data-learning-stage='unseen'] { --learning-ink: hsl(var(--muted-foreground)); }
+  [data-learning-stage='fragile'] { --learning-ink: hsl(var(--destructive)); }
+  [data-learning-stage='learning'] { --learning-ink: hsl(var(--learning-warm)); }
+  [data-learning-stage='developing'] { --learning-ink: color-mix(in srgb, hsl(var(--primary)) 65%, hsl(var(--muted-foreground))); }
+  [data-learning-stage='stable'] { --learning-ink: hsl(var(--primary)); }
+  .learning-ink { color: var(--learning-ink); }
+  .learning-tag { color: var(--learning-ink); border-color: color-mix(in srgb, var(--learning-ink) 30%, transparent); }
+  .cloud-word { outline: none; cursor: pointer; color: var(--learning-ink); }
+  .cloud-word rect { fill: transparent; stroke: transparent; }
+  .cloud-word:hover rect { fill: hsl(var(--accent) / 0.7); }
+  .cloud-word:focus-visible rect { stroke: hsl(var(--ring)); stroke-width: 2; }
+  .page-shell { @apply mx-auto flex w-full min-w-0 flex-col gap-4 p-3 sm:gap-5 sm:p-5; }
+  .page-heading h1 { @apply text-lg font-semibold tracking-tight; }
+  .page-heading > p:last-child { @apply mt-1 text-xs leading-5 text-muted-foreground; }
+  .eyebrow { @apply mb-1 text-[9px] font-semibold tracking-[0.2em] text-primary; }
+  .word-headword { font-family: Georgia, 'Times New Roman', 'Microsoft YaHei UI', serif; @apply tracking-tight; }
+  .dictionary-prose { @apply prose-headings:font-semibold prose-headings:tracking-tight prose-h3:mt-6 prose-h3:text-sm prose-p:leading-7 prose-a:text-primary prose-pre:overflow-x-auto prose-table:block prose-table:overflow-x-auto; }
 }
 
 @layer base {

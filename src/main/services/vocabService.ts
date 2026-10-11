@@ -76,6 +76,7 @@ async function processOne(id: number): Promise<void> {
   if (!entry || entry.status !== 'pending') return
 
   const settings = getSettings().llm
+  const source = entry.sources?.find((s) => s.context === entry.contextSentence && s.selection && s.word.toLowerCase() === entry.word.toLowerCase())
   // 1 次正常调用 + ≤2 次 429 指数退避重试（2s / 4s）
   const maxAttempts = 3
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -83,7 +84,9 @@ async function processOne(id: number): Promise<void> {
       const generated = await generateWordDetail(
         entry.word,
         entry.contextSentence,
-        settings
+        settings,
+        undefined,
+        source?.selection ? { text: source.original, ...source.selection } : undefined
       )
       updateVocabDetail(id, { ...generated, status: 'ready' })
       notify()

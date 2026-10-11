@@ -22,6 +22,15 @@ const api: RendererApi = {
 
   // ---------- llm ----------
   testConnection: () => ipcRenderer.invoke(IPC.LlmTestConnection),
+  lookupWord: (id, word) => ipcRenderer.invoke(IPC.LlmLookup, id, word),
+  lookupRecommendation: (id, recommendationId) => ipcRenderer.invoke(IPC.RecommendationLookup, id, recommendationId),
+  getRecommendations: (request) => ipcRenderer.invoke(IPC.RecommendationGet, request),
+  abortRecommendations: () => ipcRenderer.invoke(IPC.RecommendationAbort),
+  recommendationFeedback: (id, kind) => ipcRenderer.invoke(IPC.RecommendationFeedback, id, kind),
+  undoRecommendationFeedback: (word) => ipcRenderer.invoke(IPC.RecommendationUndo, word),
+  setRecommendationPreference: (patch) => ipcRenderer.invoke(IPC.RecommendationPreference, patch),
+  abortLookup: (id) => ipcRenderer.invoke(IPC.LlmLookupAbort, id),
+  saveLookup: (id) => ipcRenderer.invoke(IPC.LookupSave, id),
   translate: (requestId, text) => ipcRenderer.invoke(IPC.LlmTranslate, requestId, text),
   abortTranslate: (requestId) => ipcRenderer.invoke(IPC.LlmTranslateAbort, requestId),
   onTranslateEvent: (cb) => {
@@ -43,10 +52,26 @@ const api: RendererApi = {
 
   // ---------- vocab ----------
   listVocab: (query: VocabQuery) => ipcRenderer.invoke(IPC.VocabList, query),
-  addVocab: (words, contextSentence) => ipcRenderer.invoke(IPC.VocabAdd, words, contextSentence),
+  queryVocabView: (query) => ipcRenderer.invoke(IPC.VocabViewQuery, query),
+  getVocabViewEntry: (id) => ipcRenderer.invoke(IPC.VocabViewEntry, id),
+  onReviewChanged: (cb) => {
+    const listener = () => cb()
+    ipcRenderer.on(IPC.ReviewChanged, listener)
+    return () => ipcRenderer.removeListener(IPC.ReviewChanged, listener)
+  },
+  exportVocab: (format) => ipcRenderer.invoke(IPC.VocabExport, format),
+  addVocab: (selections, contextSentence) => ipcRenderer.invoke(IPC.VocabAdd, selections, contextSentence),
   updateVocabNote: (id, note) => ipcRenderer.invoke(IPC.VocabUpdateNote, id, note),
   deleteVocab: (id) => ipcRenderer.invoke(IPC.VocabDelete, id),
   regenerateDetail: (id) => ipcRenderer.invoke(IPC.LlmRegenerateDetail, id),
+  reviewOverview: (search) => ipcRenderer.invoke(IPC.ReviewOverview, search),
+  startReview: (config) => ipcRenderer.invoke(IPC.ReviewStart, config),
+  getReview: (id) => ipcRenderer.invoke(IPC.ReviewGet, id),
+  revealReview: (command) => ipcRenderer.invoke(IPC.ReviewReveal, command),
+  rateReview: (command, rating) => ipcRenderer.invoke(IPC.ReviewRate, command, rating),
+  skipReview: (command) => ipcRenderer.invoke(IPC.ReviewSkip, command),
+  undoReview: (id, revision) => ipcRenderer.invoke(IPC.ReviewUndo, id, revision),
+  endReview: (id, revision) => ipcRenderer.invoke(IPC.ReviewEnd, id, revision),
   onVocabChanged: (cb) => {
     const listener = () => cb()
     ipcRenderer.on(IPC.VocabChanged, listener)
