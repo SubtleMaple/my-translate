@@ -62,6 +62,9 @@ export interface RecommendationFeedback {
 }
 export interface RecommendationPage {
   items: WordRecommendation[]
+  /** 本批尚未消费的词数，包含当前展示的最多三个。 */
+  remainingCount: number
+  batchSize: number
   estimatedLevel: CefrLevel | null
   targetLevel: CefrLevel
   coldLevel: CefrLevel | null
@@ -77,6 +80,7 @@ export interface RecommendationPage {
   feedback: RecommendationFeedback[]
 }
 export interface RecommendationRequest {
+  /** next 为旧版兼容读取；生成新批次只使用 refresh。 */
   action?: 'current' | 'next' | 'refresh'
   allowGenerate?: boolean
 }

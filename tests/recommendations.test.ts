@@ -15,7 +15,7 @@ import { parseRecommendations, parseAnalyses, vocabularyEvidence } from '../src/
 import type { WordRecommendation, VocabEntry } from '../src/shared/types'
 import { lookupWord } from '../src/main/services/lookupService'
 
-const names = ['compile','render','deploy','latency','throughput','interface','protocol','robust','scalable','constraint','insight','nuance','adapt','sustain','clarify','coherent','derive','feasible']
+const names = 'compile render deploy latency throughput interface protocol robust scalable constraint insight nuance adapt sustain clarify coherent derive feasible reliable concise efficient resilient framework algorithm database software hardware memory storage bandwidth browser server client packet router component module function variable constant parameter argument process thread task queue stack buffer stream event signal channel socket address route monitor measure estimate evaluate infer deduce justify contrast compare distinguish interpret analyze synthesize assess examine explore discover observe predict anticipate recognize acknowledge consider reflect resolve improve enhance refine optimize simplify reduce expand extend maintain preserve restore recover support enable facilitate establish develop construct compose assemble integrate combine connect separate isolate protect secure ensure verify validate confirm demonstrate illustrate explain express convey imply suggest indicate reveal highlight emphasize identify define describe summarize outline propose recommend require acquire retain obtain achieve accomplish deliver provide contribute cooperate collaborate coordinate negotiate implement execute operate perform conduct manage organize arrange allocate distribute transfer transform convert generate create design innovate invent investigate research experiment simulate calculate compute quantify classify categorize prioritize balance accelerate tolerate mitigate prevent avoid detect diagnose debug troubleshoot repair replace upgrade migrate automate configure customize document communicate articulate persuade appreciate cherish embrace flourish thrive venture wander linger glimpse'.split(' ')
 function candidate(word: string, level = 'B2', index = 0) {
   return { word, lemma: word, forms: [word + 's'], family: word, level, topic: index < 10 ? 'technology' : 'general', pos: 'n.', meaning: '学习义项', reason: '有助于理解类似阅读材料', utility: 4 }
 }
@@ -31,10 +31,17 @@ function installMock() {
     let content: string
     if (system.includes('vocabulary-analysis-v1')) content = JSON.stringify({ analyses: input.vocabulary.map((e: any) => ({ entryId: e.entryId, lemma: e.word === 'went' ? 'go' : e.word,
       level: e.word.length > 30 ? 'C2' : 'B2', topic: 'technology', confidence: 0.85, specialist: e.word.length > 30 })) })
-    else content = JSON.stringify({ recommendations: names.map((w, i) => candidate(w, input.targetLevel, i)) })
+    else {
+      assert.match(system, /10个/, '每次仅要求生成10个候选')
+      content = JSON.stringify({ recommendations: names.filter(w => !input.excluded.includes(w)).slice(0, 10).map((w, i) => candidate(w, input.targetLevel, i)) })
+    }
     return Response.json(body.system ? { content: [{ type: 'text', text: content }] } : { choices: [{ message: { content } }] })
   })
   return calls
+}
+function queueItems() {
+  const candidates = new Map(getCandidates().map(item => [item.id, item]))
+  return getRecommendationState().queueIds.map(id => candidates.get(id)!)
 }
 before(async () => {
   process.env.MY_TRANSLATE_TEST_PROFILE = mkdtempSync(join(tmpdir(), 'opencode', 'recommendations-'))
@@ -91,174 +98,220 @@ test('模型边界：CEFR/义项/词头校验，原句注入省略，不发送�
   assert.throws(() => parseAnalyses('{"analyses":[]}', [entry.id]))
 })
 
-test('双协议：手动刷新换组并排除收藏/反馈，增量分析与缓存磁盘持久化', async () => {
+test('双协议：生成10候选；反馈与收藏仅本地消费，手动刷新增量分析并持久化', async () => {
   for (const w of ['algorithm','framework','database','iterate']) seed(w)
   for (const type of ['openai','anthropic'] as const) {
+    getDb().run('DELETE FROM recommendation_analysis; DELETE FROM recommendation_candidates; DELETE FROM recommendation_history; DELETE FROM recommendation_state;')
     updateSettings({ llm: { type } })
     const calls = installMock()
     const first = await getRecommendations({ action: 'refresh' })
     assert.equal(first.estimatedLevel, 'B2'); assert.equal(first.items.length, 3)
-    assert.equal(calls.length, 2)
-    const again = await getRecommendations()
-    assert.deepEqual(again.items.map(i => i.id), first.items.map(i => i.id)); assert.equal(calls.length, 2)
+    assert.equal(first.remainingCount, 10); assert.equal(first.batchSize, 10); assert.equal(calls.length, 2)
+    const batch = queueItems()
+    assert.deepEqual(first.items, batch.slice(0, 3))
+    assert.deepEqual((await getRecommendations()).items, first.items); assert.equal(calls.length, 2)
     const chosen = first.items[0]
     const marked = recommendationFeedback(chosen.id, 'known')
-    assert.deepEqual(marked.items, first.items, '反馈只记录偏好，当前组保留')
+    assert.deepEqual(marked.items, batch.slice(1, 4)); assert.equal(marked.remainingCount, 9)
     assert.equal(marked.feedback.filter(f => f.word === chosen.word).length, 1)
     const restored = undoRecommendationFeedback(chosen.word)
     assert.ok(!restored.feedback.some(f => f.word === chosen.word))
-    recommendationFeedback(chosen.id, 'skip')
-    const toSave = restored.items.find(i => i.word !== chosen.word)!
+    assert.deepEqual(restored.items, marked.items, '撤销反馈不把已消费候选重新插队')
+    const skipped = restored.items[0]
+    recommendationFeedback(skipped.id, 'skip')
+    const toSave = batch[2]
     seed(toSave.word)
-    assert.deepEqual((await getRecommendations({ allowGenerate: false })).items, first.items, '收藏不挤走当前推荐')
+    const afterSave = await getRecommendations({ allowGenerate: false })
+    assert.deepEqual(afterSave.items, batch.slice(3, 6)); assert.equal(afterSave.remainingCount, 7)
+    assert.equal(calls.length, 2, '反馈和收藏补位只用本批隐藏候选')
     const cachedAnalyses = getAnalyses().size
     const next = await getRecommendations({ action: 'refresh' })
-    assert.ok(next.items.every(i => !first.items.some(f => f.word === i.word)))
-    assert.ok(next.items.every(i => ![chosen.word, toSave.word].includes(i.word)))
-    assert.equal(calls.length, 4, '显式刷新分析新收藏并生成新组')
+    assert.ok(next.items.every(i => !batch.some(f => f.word === i.word)))
+    assert.equal(next.remainingCount, 10); assert.equal(calls.length, 4)
     const analysisCalls = calls.filter(c => c.system.includes('vocabulary-analysis-v1'))
     assert.equal(analysisCalls.at(-1).input.vocabulary.length, 1, '只分析新收藏的词')
     assert.equal(getAnalyses().size, cachedAnalyses + 1)
+    const queue = [...getRecommendationState().queueIds]
     flushDatabase(true)
     assert.ok(readFileSync(dbPath()).length > 0)
     await initDatabase()
     assert.deepEqual((await getRecommendations()).items, next.items)
-    assert.equal(calls.length, 4, '重开数据库读取持久组不联网')
-    assert.ok(getRecommendationHistory().some(h => h.word === chosen.word && h.kind === 'skip'))
-    assert.ok(getRecommendationState().generatedAt > 0)
-    // 为第二协议保留词库，清除展示历史以确保有足够未见候选。
-    getDb().run('DELETE FROM recommendation_history')
+    assert.deepEqual(getRecommendationState().queueIds, queue); assert.equal(calls.length, 4)
+    assert.ok(getRecommendationHistory().some(h => h.word === skipped.word && h.kind === 'skip'))
   }
 })
 
-test('空词库首次选择难度生成一组；难度反馈/查询义项不会替换当前组', async () => {
+test('首次初始化10词，成功查询逐一消费至耗尽；中途与耗尽重开数据库均不联网', async () => {
   const calls = installMock()
   assert.equal((await getRecommendations()).needsLevel, true); assert.equal(calls.length, 0)
   const first = await setRecommendationPreference({ coldLevel: 'B1' })
   assert.equal(first.targetLevel, 'B1'); assert.equal(first.items.length, 3)
-  const harder = await setRecommendationPreference({ difficulty: 'easy' })
-  assert.equal(harder.targetLevel, 'B2')
-  assert.deepEqual(harder.items, first.items)
-  const easier = await setRecommendationPreference({ difficulty: 'hard' })
-  assert.equal(easier.targetLevel, 'B1')
-  assert.deepEqual(easier.items, first.items)
-  assert.equal(calls.length, 1, '难度反馈不生成新推荐')
-  const before = calls.length
-  await setRecommendationPreference({ difficulty: 'right' }); assert.equal(calls.length, before)
-  const item = easier.items[0]
+  const initial = queueItems()
+  assert.equal(initial.length, 10)
+  assert.equal(getRecommendationState().batchIds!.length, 10)
+  for (let index = 0; index < initial.length; index++) {
+    const before = await getRecommendations()
+    assert.deepEqual(before.items, initial.slice(index, index + 3))
+    assert.equal(before.remainingCount, 10 - index)
+    recordLookup([initial[index].word])
+    assert.deepEqual(getRecommendationState().queueIds, initial.slice(index + 1).map(item => item.id), '成功查询立即持久化消费，等待页面刷新前也不会丢失进度')
+    const next = await getRecommendations()
+    assert.deepEqual(next.items, initial.slice(index + 1, index + 4))
+    assert.equal(next.remainingCount, 9 - index); assert.equal(next.batchSize, 10)
+    assert.equal(calls.length, 1, '补位及耗尽均不额外调用推荐模型')
+    if (index === 3 || index === 9) {
+      flushDatabase(true); await initDatabase()
+      const restarted = await getRecommendations()
+      assert.deepEqual(restarted.items, next.items); assert.equal(restarted.remainingCount, next.remainingCount)
+      assert.equal(calls.length, 1)
+    }
+  }
+  assert.deepEqual((await getRecommendations({ action: 'next' })).items, [])
+  assert.equal(calls.length, 1, '旧next入口也不能自动换批或联网')
+  await setRecommendationPreference({ difficulty: 'easy' })
+  assert.equal((await getRecommendations()).remainingCount, 0); assert.equal(calls.length, 1)
+  const refreshed = await getRecommendations({ action: 'refresh' })
+  assert.equal(refreshed.remainingCount, 10); assert.equal(calls.length, 2)
+  assert.ok(queueItems().every(item => !initial.some(old => old.word === item.word)))
+})
+
+test('真正的推荐义项查询：失败不消费，成功移出队列且后续候选补位', async () => {
+  const calls = installMock()
+  const first = await setRecommendationPreference({ coldLevel: 'B1' })
+  const batch = queueItems(), item = first.items[1]
+  setFetchImpl(async () => new Response('', { status: 503 }))
+  await assert.rejects(lookupWord('rec-lookup-failed', item.word, { pos: item.pos, meaning: item.meaning }), /503/)
+  assert.deepEqual((await getRecommendations()).items, first.items)
+  assert.equal(getRecommendationState().queueIds.length, 10)
   setFetchImpl(async (_url, init) => {
     const body = JSON.parse(String(init?.body)), prompt = body.messages.find((m: any) => m.role === 'user').content
     assert.ok(prompt.includes('推荐义项')); assert.ok(prompt.includes(item.meaning))
     return Response.json({ choices: [{ message: { content: JSON.stringify({ brief: item.meaning, pos: item.pos }) } }] })
   })
-  const result = await lookupWord('rec-lookup', item.word, { pos: item.pos, meaning: item.meaning })
+  const result = await lookupWord('rec-lookup-success', item.word, { pos: item.pos, meaning: item.meaning })
   assert.equal(result.word, item.word); assert.equal(listVocab().length, 0)
-  assert.deepEqual((await getRecommendations()).items, first.items, '查看推荐义项后仍可接着查同一组')
+  const remaining = batch.filter(i => i.id !== item.id)
+  assert.deepEqual((await getRecommendations()).items, remaining.slice(0, 3))
+  assert.deepEqual(getRecommendationState().queueIds, remaining.map(i => i.id))
+  assert.equal(calls.length, 1)
   recordLookup(['unrelated'])
   const history = getRecommendationHistory()
   undoRecommendationFeedback('unrelated')
-  assert.deepEqual(getRecommendationHistory(), history, '撤销非反馈词不会清空所有展示历史')
+  assert.deepEqual(getRecommendationHistory(), history)
 })
 
-test('当前组按持久顺序保留：查完/收藏/反馈撤销/偏好/过期/换模型均不补齐或联网', async () => {
+test('既有批次顺序在难度、过期、换模型后保持；下一批只使用本次新生成候选', async () => {
   const calls = installMock()
-  const first = await setRecommendationPreference({ coldLevel: 'B1' })
-  assert.equal(first.items.length, 3)
-  const ordered = [...first.items].reverse()
-  saveRecommendationState({ ...getRecommendationState(), currentIds: ordered.map(i => i.id) })
+  await setRecommendationPreference({ coldLevel: 'B1' })
+  const initial = queueItems(), ordered = [...initial].reverse()
+  saveRecommendationState({ ...getRecommendationState(), currentIds: ordered.slice(0, 3).map(i => i.id), queueIds: ordered.map(i => i.id) })
   const unchanged = async (label: string) => {
-    assert.deepEqual((await getRecommendations()).items, ordered, label)
-    assert.deepEqual((await getRecommendations({ allowGenerate: false })).items, ordered, label + '（只读）')
-    assert.deepEqual(getRecommendationState().currentIds, ordered.map(i => i.id), label + '（持久顺序）')
-    assert.equal(calls.length, 1, label + '（没有后台请求）')
+    const page = await getRecommendations()
+    assert.deepEqual(page.items, ordered.slice(0, 3), label)
+    assert.equal(page.remainingCount, 10)
+    assert.deepEqual(getRecommendationState().queueIds, ordered.map(i => i.id), label)
+    assert.equal(calls.length, 1, label)
   }
-  await unchanged('按 currentIds 的原顺序展示')
-  for (const item of ordered) {
-    recordLookup([item.word])
-    await unchanged('查询 ' + item.word)
-  }
-  seed(ordered[0].word)
-  await unchanged('收藏后保留整组')
-  assert.deepEqual(recommendationFeedback(ordered[1].id, 'known').items, ordered)
-  await unchanged('已认识反馈')
-  assert.deepEqual(recommendationFeedback(ordered[2].id, 'skip').items, ordered)
-  await unchanged('不感兴趣反馈')
-  assert.deepEqual(undoRecommendationFeedback(ordered[1].word).items, ordered)
-  await unchanged('撤销反馈')
-  recommendationFeedback(ordered[1].id, 'known')
   for (const patch of [{ difficulty: 'easy' }, { difficulty: 'hard' }, { difficulty: 'right' }, { coldLevel: 'C2' }] as const) {
-    assert.deepEqual((await setRecommendationPreference(patch)).items, ordered)
-    await unchanged('修改推荐偏好')
+    await setRecommendationPreference(patch); await unchanged('难度偏好仅用于下一次刷新')
   }
   saveRecommendationState({ ...getRecommendationState(), generatedAt: Date.now() - 8 * DAY, lastAttempt: 0 })
-  await unchanged('超过七天且初次请求冷却已结束')
+  recordShown(initial, Date.now() - 8 * DAY)
+  await unchanged('过期不打乱本批余量')
   updateSettings({ llm: { type: 'anthropic', anthropic: { model: 'another-model' } } })
-  await unchanged('模型改变')
-  flushDatabase(true)
-  await initDatabase()
-  await unchanged('数据库重开')
-  const refreshed = await getRecommendations({ action: 'refresh' })
-  assert.equal(refreshed.items.length, 3)
-  assert.ok(refreshed.items.every(item => !ordered.some(old => old.word === item.word)))
-  assert.equal(calls.length, 3, '点击刷新后才分析收藏并请求新词')
-  assert.deepEqual((await getRecommendations()).items, refreshed.items)
-  assert.equal(calls.length, 3)
-})
-
-test('持久组不足三张或候选缺失时只读已有词，不从候选池自动补齐', async () => {
-  const calls = installMock()
-  const first = await setRecommendationPreference({ coldLevel: 'B1' })
-  const partial = first.items.slice(0, 2).reverse()
-  saveRecommendationState({ ...getRecommendationState(), currentIds: partial.map(item => item.id), lastAttempt: 0 })
-  assert.deepEqual((await getRecommendations()).items, partial)
-  getDb().run('DELETE FROM recommendation_candidates WHERE id=?', [partial[0].id])
-  assert.deepEqual((await getRecommendations()).items, partial.slice(1))
-  getDb().run('DELETE FROM recommendation_candidates WHERE id=?', [partial[1].id])
-  assert.deepEqual((await getRecommendations()).items, [])
-  assert.deepEqual(getRecommendationState().currentIds, partial.map(item => item.id))
-  assert.equal(calls.length, 1, '历史组损坏也由用户决定何时刷新')
-})
-
-test('展示冷却到期仍保留旧组，显式刷新不会选回正在展示的词', async () => {
-  const calls = installMock()
-  const first = await setRecommendationPreference({ coldLevel: 'B1' })
-  recordShown(first.items, Date.now() - 8 * DAY)
-  saveRecommendationState({ ...getRecommendationState(), generatedAt: Date.now() - 8 * DAY, lastAttempt: 0 })
-  assert.deepEqual((await getRecommendations()).items, first.items)
-  assert.equal(calls.length, 1)
+  await unchanged('切换模型不自动换批')
   const next = await getRecommendations({ action: 'refresh' })
-  assert.equal(next.items.length, 3)
-  assert.ok(next.items.every(item => !first.items.some(old => old.word === item.word)))
+  assert.equal(next.remainingCount, 10); assert.equal(calls.length, 2)
+  const nextBatch = queueItems()
+  assert.ok(nextBatch.every(item => !initial.some(old => old.word === item.word)), '手动刷新排除本批全部10词，含从未展示的隐藏词')
+  assert.ok(getCandidates().some(item => initial.some(old => old.id === item.id)), '测试保留旧历史池')
+  for (let index = 0; index < nextBatch.length; index++) {
+    recordLookup([nextBatch[index].word])
+    assert.deepEqual((await getRecommendations()).items, nextBatch.slice(index + 1, index + 4), '补位不能混入历史批次')
+  }
   assert.equal(calls.length, 2)
 })
 
-test('失败保留缓存、不自动反复请求；并发生成合并，词库变化/取消丢弃旧回包', async () => {
+test('旧固定三词缓存本地迁移至最多10词，已查询词不复活且不请求模型', async () => {
+  const calls = installMock()
+  const first = await setRecommendationPreference({ coldLevel: 'B1' })
+  const consumed = first.items[0]
+  recordLookup([consumed.word])
+  const state: Record<string, unknown> = { ...getRecommendationState(), currentIds: first.items.map(item => item.id).reverse() }
+  delete state.batchIds; delete state.queueIds
+  getDb().run('UPDATE recommendation_state SET payload=? WHERE id=1', [JSON.stringify(state)])
+  const migrated = await getRecommendations()
+  assert.deepEqual(migrated.items.slice(0, 2), first.items.slice(1).reverse())
+  assert.equal(migrated.remainingCount, 9); assert.equal(migrated.batchSize, 9)
+  assert.ok(!queueItems().some(item => item.id === consumed.id)); assert.equal(calls.length, 1)
+  flushDatabase(true); await initDatabase()
+  assert.deepEqual((await getRecommendations()).items, migrated.items); assert.equal(calls.length, 1)
+})
+
+test('模型少回候选照常逐个使用，多回最多保留10；都不自动补充请求', async () => {
+  let calls = 0
+  setFetchImpl(async () => {
+    calls++
+    return Response.json({ choices: [{ message: { content: JSON.stringify({ recommendations: names.slice(0, 2).map(w => candidate(w, 'B1')) }) } }] })
+  })
+  const first = await setRecommendationPreference({ coldLevel: 'B1' })
+  assert.equal(first.items.length, 2); assert.equal(first.remainingCount, 2); assert.equal(first.batchSize, 2)
+  for (const item of first.items) recordLookup([item.word])
+  assert.equal((await getRecommendations()).remainingCount, 0); assert.equal(calls, 1)
+  setFetchImpl(async () => {
+    calls++
+    return Response.json({ choices: [{ message: { content: JSON.stringify({ recommendations: names.slice(2, 20).map(w => candidate(w, 'B1')) }) } }] })
+  })
+  const refreshed = await getRecommendations({ action: 'refresh' })
+  assert.equal(refreshed.remainingCount, 10); assert.equal(getRecommendationState().batchIds!.length, 10)
+  assert.equal(calls, 2)
+})
+
+test('新批次保存失败时事务回滚候选池和队列，保留原批未消费进度', async () => {
+  const calls = installMock()
+  await setRecommendationPreference({ coldLevel: 'B1' })
+  recordLookup([queueItems()[0].word])
+  const previous = await getRecommendations(), state = getRecommendationState(), candidates = getCandidates()
+  // lastAttempt/lastError等写入仍允许，只有激活新的batchIds时触发存储失败。
+  const batchFragment = JSON.stringify({ batchIds: state.batchIds }).slice(1, -1)
+  getDb().run(`CREATE TEMP TRIGGER reject_new_recommendation_batch BEFORE INSERT ON recommendation_state
+    WHEN instr(NEW.payload, '${batchFragment}') = 0
+    BEGIN SELECT RAISE(ABORT, 'synthetic batch save failure'); END`)
+  try {
+    const failed = await getRecommendations({ action: 'refresh' })
+    assert.match(failed.message, /synthetic batch save failure/)
+    assert.deepEqual(failed.items, previous.items); assert.equal(failed.remainingCount, 9)
+    assert.deepEqual(getRecommendationState().batchIds, state.batchIds)
+    assert.deepEqual(getRecommendationState().queueIds, state.queueIds)
+    assert.deepEqual(getCandidates(), candidates, '同一事务内新增候选也必须回滚')
+    await getRecommendations(); assert.equal(calls.length, 2, '保存失败不会偷偷重新请求')
+  } finally { getDb().run('DROP TRIGGER reject_new_recommendation_batch') }
+})
+
+test('刷新失败/取消保留完整剩余队列；并发合并及词库变化丢弃旧回包', async () => {
   seed('algorithm'); installMock()
-  const first = await getRecommendations({ action: 'refresh' })
+  await getRecommendations({ action: 'refresh' })
+  recordLookup([queueItems()[0].word])
+  const first = await getRecommendations(), savedQueue = [...getRecommendationState().queueIds]
   let calls = 0
   setFetchImpl(async () => { calls++; return new Response('', { status: 503 }) })
   const failed = await getRecommendations({ action: 'refresh' })
-  assert.deepEqual(failed.items.map(i => i.word), first.items.map(i => i.word)); assert.match(failed.message, /503/)
-  await getRecommendations(); assert.equal(calls, 1)
-  recordShown(getCandidates(), Date.now())
-  const failedNext = await getRecommendations({ action: 'next' })
-  assert.deepEqual(failedNext.items.map(i => i.word), first.items.map(i => i.word), '候选耗尽时换组失败也应保留原组')
-  assert.equal(calls, 2)
-  const failedPreference = await setRecommendationPreference({ difficulty: 'easy' })
-  assert.equal(failedPreference.targetLevel, 'C1')
-  assert.deepEqual(failedPreference.items, first.items, '难度反馈保留原组，不触发重试')
-  assert.equal(calls, 2)
+  assert.deepEqual(failed.items, first.items); assert.equal(failed.remainingCount, 9); assert.match(failed.message, /503/)
+  assert.deepEqual(getRecommendationState().queueIds, savedQueue)
+  await getRecommendations(); await getRecommendations({ action: 'next' }); assert.equal(calls, 1)
+  const preference = await setRecommendationPreference({ difficulty: 'easy' })
+  assert.equal(preference.targetLevel, 'C1'); assert.deepEqual(preference.items, first.items); assert.equal(calls, 1)
   let release!: () => void
   const gate = new Promise<void>(r => { release = r })
-  setFetchImpl(async () => { calls++; await gate; return Response.json({ choices: [{ message: { content: JSON.stringify({ recommendations: names.map(w => candidate(w)) }) } }] }) })
+  setFetchImpl(async () => { calls++; await gate; return Response.json({ choices: [{ message: { content: JSON.stringify({ recommendations: names.slice(10, 20).map(w => candidate(w)) }) } }] }) })
   const generating = getRecommendations({ action: 'refresh' }), duplicate = getRecommendations({ action: 'refresh' })
   seed('newword'); release()
   const [one, two] = await Promise.all([generating, duplicate])
-  assert.match(one.message, /变化/); assert.equal(two.message, one.message); assert.equal(calls, 3)
-  assert.deepEqual(one.items, first.items, '并发生成期间词库变化不替换当前组')
+  assert.match(one.message, /变化/); assert.equal(two.message, one.message); assert.equal(calls, 2)
+  assert.deepEqual(one.items, first.items); assert.deepEqual(getRecommendationState().queueIds, savedQueue)
   setFetchImpl(async (_url, init) => new Promise((_resolve, reject) => init?.signal?.addEventListener('abort', () => reject(new DOMException('cancelled','AbortError')), { once: true })))
   const pending = getRecommendations({ action: 'refresh' }); abortRecommendations()
   const cancelled = await pending
-  assert.match(cancelled.message, /取消/)
-  assert.deepEqual(cancelled.items, first.items, '取消刷新保留当前组顺序')
+  assert.match(cancelled.message, /取消/); assert.deepEqual(cancelled.items, first.items)
+  assert.deepEqual(getRecommendationState().queueIds, savedQueue)
 })

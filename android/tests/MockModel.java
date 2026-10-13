@@ -74,7 +74,7 @@ final class MockModel implements AutoCloseable {
         for(String word:names){
           if(omitted.contains(word))continue;
           recommendations.put(new JSONObject().put("word",word).put("lemma",word).put("forms",new JSONArray()).put("family",word).put("level",parameters.getString("targetLevel")).put("topic","general").put("pos","n.").put("meaning","推荐目标义项").put("reason","拓展日常阅读词汇，理解更多常见表达。").put("utility",4));
-          omitted.add(word);if(recommendations.length()==18)break;
+          omitted.add(word);if(recommendations.length()==10)break;
         }
         content=new JSONObject().put("recommendations",recommendations).toString();
       }else if(user.startsWith("{\"targets\":")){

@@ -21,14 +21,19 @@ export interface RecommendationState {
   coldLevel: CefrLevel | null
   adjustment: number
   currentIds: string[]
+  /** null 表示尚未初始化批次（包括旧版数据）；空数组表示已耗尽的批次。 */
+  batchIds: string[] | null
+  /** 尚未消费的候选，前 3 个展示；独立于历史候选缓存。 */
+  queueIds: string[]
   profileKey: string
   generatedAt: number
   lastAttempt: number
   lastError: string
 }
 export const DEFAULT_RECOMMENDATION_STATE: RecommendationState = {
-  coldLevel: null, adjustment: 0, currentIds: [], profileKey: '', generatedAt: 0, lastAttempt: 0, lastError: ''
+  coldLevel: null, adjustment: 0, currentIds: [], batchIds: null, queueIds: [], profileKey: '', generatedAt: 0, lastAttempt: 0, lastError: ''
 }
+export const RECOMMENDATION_BATCH_SIZE = 10
 export const DAY = 86_400_000
 export const wordKey = (word: string): string => word.trim().toLowerCase().replace(/’/g, "'").replace(/‐/g, '-')
 
@@ -86,7 +91,7 @@ export function eligibleRecommendation(item: WordRecommendation, excluded: Set<s
 }
 
 /** 本地控制难度距离、领域需求、实用性和同组多样性；不把模型理由当作分数执行。 */
-export function chooseRecommendations(candidates: WordRecommendation[], profile: ReturnType<typeof recommendationProfile>, history: RecommendationHistory[], now: number, chosen: WordRecommendation[] = []): WordRecommendation[] {
+export function chooseRecommendations(candidates: WordRecommendation[], profile: ReturnType<typeof recommendationProfile>, history: RecommendationHistory[], now: number, chosen: WordRecommendation[] = [], limit = 3): WordRecommendation[] {
   const skipped = history.filter(h => h.kind === 'skip' && h.updatedAt > now - 90 * DAY)
   const target = CEFR_LEVELS.indexOf(profile.targetLevel)
   const ranked = candidates.filter(c => Math.abs(CEFR_LEVELS.indexOf(c.level) - target) <= 1).map(item => {
@@ -96,7 +101,7 @@ export function chooseRecommendations(candidates: WordRecommendation[], profile:
     return { item, score }
   })
   const result = [...chosen]
-  while (result.length < 3) {
+  while (result.length < limit) {
     const next = ranked.filter(({ item }) => !result.some(r => r.id === item.id || wordKey(r.family) === wordKey(item.family) ||
       [r.word, ...r.forms].map(wordKey).some(w => [item.word, ...item.forms].map(wordKey).includes(w))))
       .sort((a, b) => (b.score - result.filter(r => r.topic === b.item.topic).length * 12) - (a.score - result.filter(r => r.topic === a.item.topic).length * 12) || a.item.word.localeCompare(b.item.word))[0]

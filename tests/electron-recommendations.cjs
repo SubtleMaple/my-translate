@@ -8,7 +8,7 @@ process.env.MY_TRANSLATE_USER_DATA = profile
 app.setPath('userData', profile); app.setAppPath(repo)
 const report = { profile, checks: [], screenshots: [], failures: [] }
 const names = ('compile render deploy latency throughput interface protocol robust scalable constraint insight nuance adapt sustain clarify coherent derive feasible reliable concise efficient coherent resilient framework algorithm database software hardware memory storage bandwidth browser server client packet router component module function variable constant parameter argument return process thread task queue stack buffer stream event signal channel socket address route monitor measure estimate evaluate infer deduce justify contrast compare distinguish interpret analyze synthesize assess examine explore discover observe predict anticipate perceive recognize acknowledge consider reflect ponder resolve improve enhance refine optimize simplify reduce expand extend maintain preserve restore recover support enable facilitate establish develop construct compose assemble integrate combine connect separate isolate protect secure ensure verify validate confirm demonstrate illustrate explain express convey imply suggest indicate reveal highlight emphasize identify define describe summarize outline propose recommend require acquire retain obtain achieve accomplish deliver provide contribute cooperate collaborate coordinate negotiate implement execute operate perform conduct manage organize arrange allocate distribute transfer transform convert generate create design innovate invent investigate research experiment simulate calculate compute quantify classify categorize prioritize balance adapt accelerate tolerate mitigate prevent avoid detect diagnose debug troubleshoot repair replace upgrade migrate automate configure customize document communicate articulate persuade appreciate cherish embrace flourish thrive venture wander linger glimpse perceive').split(' ')
-const counters = { analysis: 0, recommendations: 0, details: 0, normalization: 0, batchSizes: [] }
+const counters = { analysis: 0, recommendations: 0, details: 0, normalization: 0, batchSizes: [], recommendationBatches: [] }
 let win, server, fail = false, slow = false
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 const evaluate = (fn, ...args) => win.webContents.executeJavaScript(`(${fn.toString()})(...${JSON.stringify(args)})`, true)
@@ -70,7 +70,10 @@ async function main() {
       if (slow) await sleep(1200)
       if (fail) { res.writeHead(503); res.end('synthetic failure'); return }
       const input = JSON.parse(user)
-      content = JSON.stringify({ recommendations: [...new Set(names)].filter(w => !input.excluded.includes(w)).slice(0, 18).map((word, i) => ({ word, lemma: word, forms: [word+'s'], family: word,
+      assert.match(system, /10个/, 'model request should ask for exactly ten candidates')
+      const batch = [...new Set(names)].filter(w => !input.excluded.includes(w)).slice(0, 10)
+      counters.recommendationBatches.push({ words: batch, targetLevel: input.targetLevel, excluded: input.excluded })
+      content = JSON.stringify({ recommendations: batch.map((word, i) => ({ word, lemma: word, forms: [word+'s'], family: word,
         level: input.targetLevel, topic: i < 12 ? 'technology' : 'general', pos: 'n.', meaning: '推荐目标义项', reason: input.samples.length ? '与你近期的科技阅读相关，有助于理解同类材料。' : '同难度的常用阅读词，可拓展日常表达。', utility: 4 })) })
     } else if (user.startsWith('{"targets":')) {
       counters.normalization++
@@ -97,45 +100,69 @@ async function main() {
   assert.equal(counters.analysis, 0); assert.equal(counters.recommendations, 1)
   const first = await words()
   assert.equal(await evaluate(() => [...document.querySelectorAll('button')].some(b => b.textContent.trim() === '换一组')), false)
-  await ariaClick('更新推荐'); await settled()
-  assert.ok((await words()).every(w => !first.includes(w))); assert.equal(counters.recommendations, 2)
-  report.checks.push('empty library requires level; cold B1 initializes once; only refresh control replaces group')
-  const kept = await words(), beforeFeedback = counters.recommendations
-  const known = kept[0]
-  await ariaClick('已认识 ' + known); await settled()
-  assert.deepEqual(await words(), kept)
-  await evaluate(() => { document.querySelector('[aria-label="为你推荐"] details').open = true })
-  await ariaClick('撤销 ' + known); await settled()
-  assert.ok(!(await evaluate(() => window.api.getRecommendations({ allowGenerate: false }))).feedback.some(f => f.word === known))
-  assert.deepEqual(await words(), kept)
-  const persistedKnown = kept[0]
-  await ariaClick('已认识 ' + persistedKnown); await settled()
-  const skipped = kept[1]
-  await ariaClick('不感兴趣 ' + skipped); await settled()
-  assert.deepEqual(await words(), kept)
-  assert.equal(counters.recommendations, beforeFeedback)
-  const queried = kept[2]
-  const normalizeBefore = counters.normalization, detailBefore = counters.details
-  await ariaClick('查询推荐词 ' + queried)
-  await until(() => evaluate(() => document.querySelector('article h2')?.textContent), 'recommended lookup')
-  assert.equal(counters.normalization, normalizeBefore)
-  assert.equal(counters.details, detailBefore + 1)
-  assert.ok(await evaluate(() => document.body.textContent.includes('推荐目标义项')))
-  assert.equal((await evaluate(() => window.api.listVocab({}))).length, 0)
-  await click('加入生词本')
-  await until(() => evaluate(async () => (await window.api.listVocab({})).length === 1), 'save queried word')
-  await queryInput(''); await settled()
-  assert.deepEqual(await words(), kept)
-  for (const word of kept.slice(0, 2)) {
-    await ariaClick('查询推荐词 ' + word)
-    await until(() => evaluate(word => document.querySelector('article h2')?.textContent === word, word), 'lookup ' + word)
+  let queuePage = await evaluate(() => window.api.getRecommendations({ allowGenerate: false }))
+  assert.equal(queuePage.remainingCount, 10); assert.equal(queuePage.batchSize, 10)
+  const consumed = [], normalizeBefore = counters.normalization, detailBefore = counters.details
+  for (let index = 0; index < 10; index++) {
+    const shown = await words(), queried = shown[0]
+    assert.equal(shown.length, Math.min(3, 10 - index))
+    assert.ok(!consumed.includes(queried), 'consumed words never return within the batch')
+    assert.ok(counters.recommendationBatches[0].words.includes(queried), 'all cards come from the same generated batch')
+    await ariaClick('查询推荐词 ' + queried)
+    await until(() => evaluate(word => document.querySelector('article h2')?.textContent === word, queried), 'recommended lookup ' + queried)
+    assert.ok(await evaluate(() => document.body.textContent.includes('推荐目标义项')))
+    if (index === 0) {
+      assert.equal((await evaluate(() => window.api.listVocab({}))).length, 0)
+      await click('加入生词本')
+      await until(() => evaluate(async () => (await window.api.listVocab({})).length === 1), 'save queried word')
+    }
+    consumed.push(queried)
     await queryInput(''); await settled()
-    assert.deepEqual(await words(), kept, 'returning after each lookup retains unread cards and order')
+    await until(async () => {
+      const visible = await words()
+      return visible.length === Math.min(3, 9 - index) && !visible.includes(queried)
+    }, 'local replacement after lookup ' + queried)
+    const after = await words()
+    assert.deepEqual(after.slice(0, Math.min(2, shown.length - 1)), shown.slice(1), 'unread cards retain their order')
+    queuePage = await evaluate(() => window.api.getRecommendations({ allowGenerate: false }))
+    assert.equal(queuePage.remainingCount, 9 - index); assert.equal(queuePage.batchSize, 10)
+    assert.equal(counters.recommendations, 1, 'consumption and exhaustion never request another batch')
+    if (index === 3) {
+      await click('翻译'); await click('查词'); await settled()
+      assert.deepEqual(await words(), after, 'navigation retains the partially consumed batch')
+    }
+    if (index === 7 || index === 8 || index === 9) await snapshot('queue-remaining-' + (9 - index))
   }
+  assert.equal(new Set(consumed).size, 10)
+  assert.equal(counters.normalization, normalizeBefore); assert.equal(counters.details, detailBefore + 10)
   await click('翻译'); await click('查词'); await settled()
-  assert.deepEqual(await words(), kept, 'navigation retains the completed group')
-  assert.equal(counters.recommendations, beforeFeedback, 'lookup/save/feedback/navigation never request a new group')
-  report.checks.push('known/skip/undo retain current cards; all recommended words can be queried; lookup uses recommended sense; save and navigation preserve order without generation')
+  assert.deepEqual(await words(), []); assert.equal(counters.recommendations, 1)
+  await new Promise(resolve => { win.webContents.once('did-finish-load', resolve); win.webContents.reload() })
+  await until(() => evaluate(() => !!document.querySelector('#source-text')), 'exhausted renderer reload')
+  await click('查词'); await settled()
+  assert.deepEqual(await words(), []); assert.equal(counters.recommendations, 1, 'reload cannot auto-generate after exhaustion')
+  await ariaClick('更新推荐'); await settled()
+  assert.ok((await words()).every(w => !consumed.includes(w))); assert.equal(counters.recommendations, 2)
+  assert.equal((await evaluate(() => window.api.getRecommendations({ allowGenerate: false }))).remainingCount, 10)
+  report.checks.push('cold B1 generates ten candidates; UI displays three and consumes all ten with local replacements; partial navigation and exhausted reload never regenerate; refresh alone starts next batch')
+  const feedbackStart = await words(), beforeFeedback = counters.recommendations
+  const undoneKnown = feedbackStart[0]
+  await ariaClick('已认识 ' + undoneKnown); await settled()
+  await until(async () => !(await words()).includes(undoneKnown), 'known consumes and replaces')
+  const afterKnown = await words()
+  await evaluate(() => { document.querySelector('[aria-label="为你推荐"] details').open = true })
+  await ariaClick('撤销 ' + undoneKnown); await settled()
+  assert.ok(!(await evaluate(() => window.api.getRecommendations({ allowGenerate: false }))).feedback.some(f => f.word === undoneKnown))
+  assert.deepEqual(await words(), afterKnown, 'undo does not reinsert an already consumed card')
+  const persistedKnown = afterKnown[0]
+  await ariaClick('已认识 ' + persistedKnown); await settled()
+  await until(async () => !(await words()).includes(persistedKnown), 'second known consumes')
+  const skipped = (await words())[0]
+  await ariaClick('不感兴趣 ' + skipped); await settled()
+  await until(async () => !(await words()).includes(skipped), 'skip consumes')
+  const kept = await words()
+  assert.equal(counters.recommendations, beforeFeedback)
+  report.checks.push('known/skip consume locally; undo preserves queue position; queries use the recommended sense without normalization; saving consumes only the queried item')
   await evaluate(() => {
     const context = 'algorithm framework database iterate pneumonoultramicroscopicsilicovolcanoconiosis'
     return window.api.addVocab(context.split(' ').map(text => ({ text, start: context.indexOf(text), end: context.indexOf(text)+text.length })), context)
@@ -162,11 +189,13 @@ async function main() {
   await evaluate(word => window.api.addVocab([{ text: word, start: 0, end: word.length }], word), seedWord)
   await until(() => evaluate(async () => (await window.api.listVocab({})).every(e => e.status === 'ready')), 'new seed ready')
   await settled()
-  assert.deepEqual(await words(), beforePreferenceWords)
+  await until(async () => !(await words()).includes(seedWord), 'saving candidate consumes locally')
+  assert.deepEqual((await words()).slice(0, 2), beforePreferenceWords.slice(1))
+  assert.equal((await evaluate(() => window.api.getRecommendations({ allowGenerate: false }))).remainingCount, 9)
   assert.equal(counters.recommendations, beforePreference)
   await ariaClick('更新推荐'); await settled()
   assert.equal(counters.batchSizes.at(-1), 1)
-  report.checks.push('representative B2 profile resists C2 outlier; difficulty and vocabulary changes preserve group; explicit refresh reuses analyses and analyzes one new word')
+  report.checks.push('representative B2 profile resists C2 outlier; difficulty preserves the current batch; saving a candidate replaces it locally; refresh reuses analyses and analyzes one new word')
   for (const dark of [false, true]) {
     if (dark) await evaluate(() => document.querySelector('button[title="切换深浅色"]').click())
     for (const [width,height] of [[340,420],[900,650]]) {
