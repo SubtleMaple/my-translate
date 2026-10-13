@@ -23,7 +23,10 @@
     "test:export": "pnpm build && electron tests/electron-export.cjs",
     "test:review": "pnpm build && electron tests/electron-review.cjs",
     "test:vocab-visuals": "pnpm build && electron tests/electron-vocab-visuals.cjs",
-    "icons": "electron scripts/generate-icons.cjs"
+    "icons": "electron scripts/generate-icons.cjs",
+    "android:web": "node scripts/build-android-web.cjs",
+    "android:apk": "pwsh -NoProfile -File scripts/build-android.ps1",
+    "typecheck:android": "tsc --noEmit -p tsconfig.android.json"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.23",

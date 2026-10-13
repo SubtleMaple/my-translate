@@ -10,6 +10,9 @@ import { useTranslateStore, type PhraseRange } from '@/stores/translateStore'
 interface DragState { startIdx: number; startX: number; startY: number; dragging: boolean; currentIdx: number }
 
 export function WordChips() {
+  const mobile = window.api.platform === 'android'
+  const [phraseMode, setPhraseMode] = useState(false)
+  const [phraseStart, setPhraseStart] = useState<number | null>(null)
   const { input, selectedWords, phraseRanges, existedSelections, catalogEntries, catalogStatus, adding, addingRevision, revision,
     toggleWord, addPhraseRange, removeSelection, clearSelection, addToVocab, refreshCatalog } = useTranslateStore()
   const tokens = useMemo(() => tokenize(input), [input])
@@ -22,6 +25,7 @@ export function WordChips() {
   const [liveRange, setLiveRange] = useState<PhraseRange | null>(null)
 
   useEffect(() => {
+    setPhraseStart(null)
     dragRef.current = null
     setLiveRange(null)
     const cancel = () => { dragRef.current = null; setLiveRange(null) }
@@ -54,11 +58,19 @@ export function WordChips() {
   }, [addPhraseRange, revision])
 
   const startDrag = (idx: number, e: React.PointerEvent) => {
+    if (mobile) return
     if (e.button !== 0 || locked) return
     suppressClick.current = false
     dragRef.current = { startIdx: idx, startX: e.clientX, startY: e.clientY, dragging: false, currentIdx: idx }
   }
   const handleClick = (index: number) => {
+    if (mobile && phraseMode) {
+      if (phraseStart === null) { setPhraseStart(index); setLiveRange({ start: index, end: index }); return }
+      addPhraseRange({ start: Math.min(phraseStart, index), end: Math.max(phraseStart, index) })
+      setPhraseStart(null)
+      setLiveRange(null)
+      return
+    }
     if (suppressClick.current) { suppressClick.current = false; return }
     toggleWord(index)
   }
@@ -81,7 +93,8 @@ export function WordChips() {
       <div className="flex flex-wrap items-center justify-between gap-2 border-b px-3 py-2.5">
         <div>
           <h2 className="text-sm font-semibold">摘录生词</h2>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">逐词点选 / 拖选 · 按位置辨义 · ✓ 该位置已收录</p>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">{mobile ? phraseMode ? phraseStart === null ? '点短语第一个词，再点最后一个词' : '请点短语最后一个词' : '点选单词 · ✓ 该位置已收录' : '逐词点选 / 拖选 · 按位置辨义 · ✓ 该位置已收录'}</p>
+          {mobile && <button type="button" aria-pressed={phraseMode} className="mt-1 rounded-md border px-3 py-2 text-xs text-primary" onClick={() => { setPhraseMode(!phraseMode); setPhraseStart(null); setLiveRange(null) }}>{phraseMode ? '切回选单词' : '选短语'}</button>}
         </div>
         <Button size="sm" disabled={!entries.length || adding} onClick={() => void add()}>
           {adding ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <BookmarkPlus className="h-3.5 w-3.5" />}

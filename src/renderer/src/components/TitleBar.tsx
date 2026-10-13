@@ -13,6 +13,7 @@ const btnClass =
  * 整栏为 drag 区域，所有按钮必须 no-drag（否则点击会变成拖动）
  */
 export function TitleBar() {
+  const mobile = window.api.platform === 'android'
   const { dark, toggleDark } = useUiStore()
   const alwaysOnTop = useSettingsStore((s) => s.settings.window.alwaysOnTop)
   const setAlwaysOnTop = useSettingsStore((s) => s.setAlwaysOnTop)
@@ -26,13 +27,13 @@ export function TitleBar() {
         <span className="truncate tracking-wide">{minimal ? '译' : '译 · My Translate'}</span>
       </div>
       <div className="flex shrink-0 items-center gap-0.5">
-        <button
+        {!mobile && <button
           className={cn(btnClass, alwaysOnTop && 'bg-accent text-accent-foreground')}
           title={alwaysOnTop ? '取消置顶' : '始终置顶'}
           onClick={() => setAlwaysOnTop(!alwaysOnTop)}
         >
           {alwaysOnTop ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
-        </button>
+        </button>}
         <button className={btnClass} title="切换深浅色" onClick={toggleDark}>
           {dark ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
         </button>
@@ -43,7 +44,7 @@ export function TitleBar() {
         >
           {minimal ? <Maximize2 className="h-3.5 w-3.5" /> : <Minimize2 className="h-3.5 w-3.5" />}
         </button>
-        <button className={btnClass} title="最小化" onClick={() => window.api.minimizeWindow()}>
+        {!mobile && <><button className={btnClass} title="最小化" onClick={() => window.api.minimizeWindow()}>
           <Minus className="h-3.5 w-3.5" />
         </button>
         <button
@@ -52,7 +53,7 @@ export function TitleBar() {
           onClick={() => window.api.closeWindow()}
         >
           <X className="h-3.5 w-3.5" />
-        </button>
+        </button></>}
       </div>
     </header>
   )

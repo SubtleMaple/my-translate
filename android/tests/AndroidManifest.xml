@@ -1,0 +1,5 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.mytranslate.mobile.tests">
+  <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="35" />
+  <application android:label="My Translate checks" />
+  <instrumentation android:name="com.mytranslate.mobile.tests.SmokeTest" android:targetPackage="com.mytranslate.mobile" />
+</manifest>

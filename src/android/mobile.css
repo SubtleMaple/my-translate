@@ -1,0 +1,10 @@
+/* Applied only by the Android entry point. */
+html[data-platform='android'] { overscroll-behavior: none; }
+[data-platform='android'] .h-screen { height: 100dvh; }
+[data-platform='android'] body { font-family: system-ui, sans-serif; }
+[data-platform='android'] header.drag { height: 52px; -webkit-app-region: no-drag; }
+[data-platform='android'] header button { min-width: 44px; min-height: 44px; }
+[data-platform='android'] nav[aria-label='主导航'] { height: 64px; }
+[data-platform='android'] input, [data-platform='android'] textarea { font-size: 16px; }
+[data-platform='android'] button[data-word-index] { min-height: 40px; }
+[data-platform='android'] [role='dialog'] { max-height: 90dvh; overflow-y: auto; }
