@@ -160,3 +160,6 @@ for row in rows:
     row["sources"] = json.loads(row["sources_json"])
     row["count"] = int(row["count"])
 ```
+## Android 手机版
+
+仓库包含独立 Android 构建，可运行普通手机翻译、查词、生词本和复习。构建、安装、数据范围与签名说明见 [android/README.md](android/README.md)。本地命令 `pnpm android:apk`，产物位于 `release/android/`。

@@ -88,11 +88,12 @@ export function SettingsView() {
   })
 
   const onSave = async () => {
-    await saveLlm(buildLlm())
-    toast.success('设置已保存')
+    try { await saveLlm(buildLlm()); toast.success('设置已保存') }
+    catch (error) { toast.error(`保存失败：${(error as Error).message}`) }
   }
 
   const onTest = async () => {
+    try {
     // 先保存再测试，保证测试的是当前表单内容
     await saveLlm(buildLlm())
     const result = await testConnection()
@@ -101,6 +102,7 @@ export function SettingsView() {
     } else {
       toast.error(result.message)
     }
+    } catch (error) { toast.error(`测试失败：${(error as Error).message}`) }
   }
 
   const ph = TYPE_PLACEHOLDERS[type]
@@ -215,7 +217,7 @@ export function SettingsView() {
         </CardContent>
       </Card>
 
-      <Card>
+      {window.api.platform !== 'android' && <Card>
         <CardHeader>
           <CardTitle className="text-sm">窗口</CardTitle>
           <CardDescription className="text-xs">即时生效并自动保存</CardDescription>
@@ -245,7 +247,8 @@ export function SettingsView() {
             />
           </div>
         </CardContent>
-      </Card>
+      </Card>}
+      {window.api.platform === 'android' && <p className="text-xs leading-6 text-muted-foreground">Android 手机版 · 设置和词库保存在本机。请使用 HTTPS 模型地址；手机需要能直接访问该服务。卸载或清除应用数据会删除本机词库，建议定期导出。</p>}
     </div>
   )
 }

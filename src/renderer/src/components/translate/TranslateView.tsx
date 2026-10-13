@@ -10,6 +10,7 @@ import { useTranslateStore } from '@/stores/translateStore'
 import { useUiStore } from '@/stores/uiStore'
 
 export function TranslateView() {
+  const mobile = window.api.platform === 'android'
   const { input, revision, setInput, status, output, outputWarning, error, translate, stop, clear } = useTranslateStore()
   const minimal = useSettingsStore((s) => s.settings.ui.minimal)
   const llmConfigured = Boolean(getActiveLlm(useSettingsStore((s) => s.settings.llm)).config.apiKey)
@@ -93,7 +94,7 @@ export function TranslateView() {
           setInput(text)
           setShowTranslation(false)
         }}
-        onContextMenu={(e) => { e.preventDefault(); void paste(false) }}
+        onContextMenu={(e) => { if (!mobile) { e.preventDefault(); void paste(false) } }}
         className="min-h-8 flex-1 resize-none rounded-none border-0 px-3 py-1.5 leading-relaxed shadow-none focus-visible:ring-0" />
     </div>
   </div>
@@ -105,12 +106,12 @@ export function TranslateView() {
     </div>
     <div className="grid min-w-0 gap-3 md:grid-cols-2">
       <section className="flex min-w-0 flex-col rounded-xl border bg-card p-3">
-        <div className="mb-2 flex items-center justify-between"><label htmlFor="source-text" className="text-xs font-semibold text-muted-foreground">原文 · 英文</label><span className="text-[10px] text-muted-foreground">Ctrl+Enter 翻译</span></div>
-        <Textarea id="source-text" ref={textareaRef} value={input} onChange={(e) => setInput(e.target.value)} onContextMenu={(e) => { e.preventDefault(); void paste(false) }} placeholder="输入或粘贴想读懂的英文…" className="h-24 min-h-20 flex-1 resize-y border-0 bg-transparent p-0 text-sm leading-relaxed shadow-none focus-visible:ring-0 sm:min-h-28" />
+        <div className="mb-2 flex items-center justify-between"><label htmlFor="source-text" className="text-xs font-semibold text-muted-foreground">原文 · 英文</label><span className="text-[10px] text-muted-foreground">{mobile ? '长按可粘贴' : 'Ctrl+Enter 翻译'}</span></div>
+        <Textarea id="source-text" ref={textareaRef} value={input} onChange={(e) => setInput(e.target.value)} onContextMenu={(e) => { if (!mobile) { e.preventDefault(); void paste(false) } }} placeholder="输入或粘贴想读懂的英文…" className="h-24 min-h-20 flex-1 resize-y border-0 bg-transparent p-0 text-sm leading-relaxed shadow-none focus-visible:ring-0 sm:min-h-28" />
         <div className="mt-3 flex flex-wrap items-center gap-2 border-t pt-2.5">
           <Button size="sm" disabled={!busy && !input.trim()} onClick={busy ? stop : doTranslate}>{busy ? <Square className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}{busy ? '停止翻译' : '翻译'}</Button>
           <Button size="sm" variant="ghost" disabled={!input && !output} onClick={doClear}>清空</Button>
-          <span className="ml-auto text-[10px] text-muted-foreground">{input.length ? `${input.length} 字符` : '右键也可粘贴'}</span>
+          <span className="ml-auto text-[10px] text-muted-foreground">{input.length ? `${input.length} 字符` : mobile ? '长按输入框可粘贴' : '右键也可粘贴'}</span>
         </div>
       </section>
       <section className="min-w-0 rounded-xl border bg-card p-3" aria-label="中文译文" aria-busy={busy}>
