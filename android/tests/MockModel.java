@@ -13,6 +13,8 @@ final class MockModel implements AutoCloseable {
   private final SSLServerSocket server;
   private final java.util.concurrent.ExecutorService threads = Executors.newCachedThreadPool();
   volatile int requests;
+  final java.util.concurrent.atomic.AtomicInteger analysisRequests = new java.util.concurrent.atomic.AtomicInteger();
+  final java.util.concurrent.atomic.AtomicInteger recommendationRequests = new java.util.concurrent.atomic.AtomicInteger();
   MockModel(Context context) throws Exception {
     KeyStore keys = KeyStore.getInstance("PKCS12");
     try (InputStream input = context.getAssets().open("model.p12")) { keys.load(input,"test-only-password".toCharArray()); }
@@ -49,9 +51,33 @@ final class MockModel implements AutoCloseable {
         }
         output.write("data: [DONE]\n\n".getBytes(StandardCharsets.US_ASCII));output.flush();return;
       }
-      JSONArray messages=request.getJSONArray("messages");String user="";
-      for(int i=0;i<messages.length();i++)if(messages.getJSONObject(i).getString("role").equals("user"))user=messages.getJSONObject(i).getString("content");
-      if(user.startsWith("{\"targets\":")){
+      JSONArray messages=request.getJSONArray("messages");String user="",system=request.optString("system","");
+      for(int i=0;i<messages.length();i++){
+        JSONObject message=messages.getJSONObject(i);
+        if(message.getString("role").equals("user"))user=message.getString("content");
+        if(message.getString("role").equals("system"))system=message.getString("content");
+      }
+      if(system.contains("vocabulary-analysis-v1")){
+        analysisRequests.incrementAndGet();
+        JSONArray vocabulary=new JSONObject(user).getJSONArray("vocabulary"),analyses=new JSONArray();
+        for(int i=0;i<vocabulary.length();i++){
+          JSONObject entry=vocabulary.getJSONObject(i);
+          analyses.put(new JSONObject().put("entryId",entry.getInt("entryId")).put("lemma",entry.getString("word")).put("level","B1").put("topic","general").put("confidence",0.9).put("specialist",false));
+        }
+        content=new JSONObject().put("analyses",analyses).toString();
+      }else if(system.contains("recommendations-v1")){
+        recommendationRequests.incrementAndGet();
+        JSONObject parameters=new JSONObject(user);JSONArray excluded=parameters.getJSONArray("excluded"),recommendations=new JSONArray();
+        java.util.Set<String> omitted=new java.util.HashSet<>();
+        for(int i=0;i<excluded.length();i++)omitted.add(excluded.getString(i));
+        String[] names=("discover explore journey travel garden forest river valley bridge village story chapter express explain describe compare identify observe suggest consider support protect improve develop create design prepare arrange collect select achieve provide resolve maintain reflect recognize reveal connect balance gather deliver explore clarify preserve adapt sustain concise reliable insight nuance").split(" ");
+        for(String word:names){
+          if(omitted.contains(word))continue;
+          recommendations.put(new JSONObject().put("word",word).put("lemma",word).put("forms",new JSONArray()).put("family",word).put("level",parameters.getString("targetLevel")).put("topic","general").put("pos","n.").put("meaning","推荐目标义项").put("reason","拓展日常阅读词汇，理解更多常见表达。").put("utility",4));
+          omitted.add(word);if(recommendations.length()==18)break;
+        }
+        content=new JSONObject().put("recommendations",recommendations).toString();
+      }else if(user.startsWith("{\"targets\":")){
         JSONArray targets=new JSONObject(user).getJSONArray("targets"),entries=new JSONArray();
         for(int i=0;i<targets.length();i++){JSONObject t=targets.getJSONObject(i);String original=t.getString("original");entries.put(new JSONObject().put("id",t.getInt("id")).put("original",original).put("word",original.equals("books")?"book":original).put("explanation","根据语境归一"));}
         content=new JSONObject().put("entries",entries).toString();

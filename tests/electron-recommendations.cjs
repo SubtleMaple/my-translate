@@ -96,20 +96,25 @@ async function main() {
   await until(async () => (await words()).length === 3, 'cold recommendations'); await settled()
   assert.equal(counters.analysis, 0); assert.equal(counters.recommendations, 1)
   const first = await words()
-  await click('换一组'); await settled()
-  assert.ok((await words()).every(w => !first.includes(w))); assert.equal(counters.recommendations, 1)
-  report.checks.push('empty library requires level; cold B1 candidates; cached next group without network')
-  const known = (await words())[0]
+  assert.equal(await evaluate(() => [...document.querySelectorAll('button')].some(b => b.textContent.trim() === '换一组')), false)
+  await ariaClick('更新推荐'); await settled()
+  assert.ok((await words()).every(w => !first.includes(w))); assert.equal(counters.recommendations, 2)
+  report.checks.push('empty library requires level; cold B1 initializes once; only refresh control replaces group')
+  const kept = await words(), beforeFeedback = counters.recommendations
+  const known = kept[0]
   await ariaClick('已认识 ' + known); await settled()
-  assert.ok(!(await words()).includes(known))
+  assert.deepEqual(await words(), kept)
   await evaluate(() => { document.querySelector('[aria-label="为你推荐"] details').open = true })
   await ariaClick('撤销 ' + known); await settled()
   assert.ok(!(await evaluate(() => window.api.getRecommendations({ allowGenerate: false }))).feedback.some(f => f.word === known))
-  const persistedKnown = (await words())[0]
+  assert.deepEqual(await words(), kept)
+  const persistedKnown = kept[0]
   await ariaClick('已认识 ' + persistedKnown); await settled()
-  const skipped = (await words())[0]
+  const skipped = kept[1]
   await ariaClick('不感兴趣 ' + skipped); await settled()
-  const queried = (await words())[0]
+  assert.deepEqual(await words(), kept)
+  assert.equal(counters.recommendations, beforeFeedback)
+  const queried = kept[2]
   const normalizeBefore = counters.normalization, detailBefore = counters.details
   await ariaClick('查询推荐词 ' + queried)
   await until(() => evaluate(() => document.querySelector('article h2')?.textContent), 'recommended lookup')
@@ -120,29 +125,48 @@ async function main() {
   await click('加入生词本')
   await until(() => evaluate(async () => (await window.api.listVocab({})).length === 1), 'save queried word')
   await queryInput(''); await settled()
-  assert.ok(!(await words()).some(w => [persistedKnown, skipped, queried].includes(w)))
-  report.checks.push('known/skip feedback and undo; recommended sense passed to lookup; query does not save; viewed/saved words excluded')
+  assert.deepEqual(await words(), kept)
+  for (const word of kept.slice(0, 2)) {
+    await ariaClick('查询推荐词 ' + word)
+    await until(() => evaluate(word => document.querySelector('article h2')?.textContent === word, word), 'lookup ' + word)
+    await queryInput(''); await settled()
+    assert.deepEqual(await words(), kept, 'returning after each lookup retains unread cards and order')
+  }
+  await click('翻译'); await click('查词'); await settled()
+  assert.deepEqual(await words(), kept, 'navigation retains the completed group')
+  assert.equal(counters.recommendations, beforeFeedback, 'lookup/save/feedback/navigation never request a new group')
+  report.checks.push('known/skip/undo retain current cards; all recommended words can be queried; lookup uses recommended sense; save and navigation preserve order without generation')
   await evaluate(() => {
     const context = 'algorithm framework database iterate pneumonoultramicroscopicsilicovolcanoconiosis'
     return window.api.addVocab(context.split(' ').map(text => ({ text, start: context.indexOf(text), end: context.indexOf(text)+text.length })), context)
   })
   await until(() => evaluate(async () => (await window.api.listVocab({})).every(e => e.status === 'ready')), 'seed details ready')
-  await settled(); await ariaClick('更新推荐'); await settled()
+  await settled()
+  assert.deepEqual(await words(), kept, 'vocabulary change event retains current group')
+  assert.equal(counters.recommendations, beforeFeedback)
+  await ariaClick('更新推荐'); await settled()
+  assert.ok((await words()).every(w => !kept.includes(w)), 'refresh applies lookup/save/feedback exclusions')
   let current = await evaluate(() => window.api.getRecommendations({ allowGenerate: false }))
   assert.equal(current.estimatedLevel, 'B2'); assert.equal(current.targetLevel, 'B2'); assert.equal(current.sampleSize, 6)
   const analyzed = counters.analysis
+  const beforePreference = counters.recommendations, beforePreferenceWords = await words()
   await click('偏简单'); await settled()
   current = await evaluate(() => window.api.getRecommendations({ allowGenerate: false }))
   assert.equal(current.targetLevel, 'C1'); assert.equal(counters.analysis, analyzed)
+  assert.deepEqual(await words(), beforePreferenceWords); assert.equal(counters.recommendations, beforePreference)
   await click('偏难'); await settled()
   current = await evaluate(() => window.api.getRecommendations({ allowGenerate: false }))
   assert.equal(current.targetLevel, 'B2'); assert.equal(counters.analysis, analyzed)
+  assert.deepEqual(await words(), beforePreferenceWords); assert.equal(counters.recommendations, beforePreference)
   const seedWord = (await words())[0]
   await evaluate(word => window.api.addVocab([{ text: word, start: 0, end: word.length }], word), seedWord)
   await until(() => evaluate(async () => (await window.api.listVocab({})).every(e => e.status === 'ready')), 'new seed ready')
-  await settled(); await ariaClick('更新推荐'); await settled()
+  await settled()
+  assert.deepEqual(await words(), beforePreferenceWords)
+  assert.equal(counters.recommendations, beforePreference)
+  await ariaClick('更新推荐'); await settled()
   assert.equal(counters.batchSizes.at(-1), 1)
-  report.checks.push('representative B2 profile resists C2 outlier; difficulty feedback; cached analyses reused; one new word analyzed incrementally')
+  report.checks.push('representative B2 profile resists C2 outlier; difficulty and vocabulary changes preserve group; explicit refresh reuses analyses and analyzes one new word')
   for (const dark of [false, true]) {
     if (dark) await evaluate(() => document.querySelector('button[title="切换深浅色"]').click())
     for (const [width,height] of [[340,420],[900,650]]) {
@@ -162,9 +186,14 @@ async function main() {
   assert.deepEqual(await words(), cachedWords)
   slow = false
   report.checks.push('four narrow/wide light/dark layouts; provider error retains cache; cancellation ignores late results')
+  const beforeModelChange = counters.recommendations
   await evaluate(() => window.api.setSettings({ llm: { type: 'anthropic' } }))
+  await click('翻译'); await click('查词'); await settled()
+  assert.deepEqual(await words(), cachedWords)
+  assert.equal(counters.recommendations, beforeModelChange, 'model changes wait for manual refresh')
   await ariaClick('更新推荐'); await settled()
   assert.equal((await evaluate(() => window.api.getRecommendations({ allowGenerate: false }))).estimatedLevel, 'B2')
+  const persistedWords = await words()
   await new Promise(resolve => { win.webContents.once('did-finish-load', resolve); win.webContents.reload() })
   await until(() => evaluate(() => !!document.querySelector('#source-text')), 'renderer reloaded')
   const requestsBefore = counters.recommendations
@@ -172,6 +201,7 @@ async function main() {
   current = await evaluate(() => window.api.getRecommendations({ allowGenerate: false }))
   assert.ok(current.feedback.some(f => f.word === persistedKnown && f.kind === 'known'))
   assert.ok(current.feedback.some(f => f.word === skipped && f.kind === 'skip'))
+  assert.deepEqual(await words(), persistedWords)
   assert.equal(counters.recommendations, requestsBefore)
   await sleep(1000)
   const SQL = await require(path.join(repo,'node_modules/sql.js'))({ wasmBinary: fs.readFileSync(path.join(repo,'node_modules/sql.js/dist/sql-wasm.wasm')) })
@@ -184,7 +214,7 @@ async function main() {
   await evaluate(() => document.querySelector('button[title="极简模式"]').click())
   await until(() => evaluate(() => !!document.querySelector('#minimal-text')), 'minimal')
   assert.equal(await evaluate(() => !!document.querySelector('[aria-label="为你推荐"]')), false)
-  report.checks.push('Anthropic generation; reload reuses cache/feedback; v4 SQLite persistence; minimal hides recommendations')
+  report.checks.push('model change retains group until refresh; Anthropic generation; reload retains current order and feedback; v5 SQLite persistence; minimal hides recommendations')
 }
 let finished = false
 const watchdog = setTimeout(() => { report.failures.push('watchdog timeout'); finish() }, 130000)

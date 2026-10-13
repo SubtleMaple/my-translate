@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Check, Loader2, RefreshCw, Shuffle, Sparkles, Undo2, X } from 'lucide-react'
+import { Check, Loader2, RefreshCw, Sparkles, Undo2, X } from 'lucide-react'
 import { CEFR_LEVELS, TOPIC_LABELS } from '@shared/types'
 import { Button } from '@/components/ui/button'
 import { useRecommendationStore } from '@/stores/recommendationStore'
@@ -21,7 +21,6 @@ export function RecommendationPanel() {
         {!!page?.topics.length && <p className="text-[11px] text-muted-foreground">{page.topics.map(t => TOPIC_LABELS[t]).join(' · ')}</p>}
       </div>
       <div className="flex gap-1">
-        <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" disabled={busy || !page || page.needsLevel} onClick={() => void load({ action: 'next' })}><Shuffle className="h-3 w-3" />换一组</Button>
         <Button size="icon" variant="ghost" className="h-7 w-7" title="更新推荐" aria-label="更新推荐" disabled={busy || !!(page && (!page.canGenerate || page.needsLevel))} onClick={() => void load({ action: 'refresh' })}><RefreshCw className="h-3.5 w-3.5" /></Button>
       </div>
     </div>
@@ -53,6 +52,6 @@ export function RecommendationPanel() {
     {!!page?.feedback.length && <details className="rounded-lg border px-3 py-2 text-xs"><summary className="cursor-pointer text-muted-foreground">已标记 {page.feedback.length} 个词 · 可撤销</summary>
       <div className="mt-2 max-h-40 space-y-1 overflow-y-auto">{page.feedback.map(item => <div key={item.word} className="flex items-center justify-between gap-2"><span className="min-w-0 break-words">{item.word} <span className="text-muted-foreground">· {item.kind === 'known' ? '已认识' : '不感兴趣'}</span></span><Button variant="ghost" size="sm" className="h-7 shrink-0 px-2 text-xs" disabled={busy} aria-label={`撤销 ${item.word}`} onClick={() => void undo(item.word)}><Undo2 className="h-3 w-3" />撤销</Button></div>)}</div>
     </details>}
-    <p className="text-[10px] leading-4 text-muted-foreground">难度与用途由模型估计，并非能力测评。已收录、已认识及近期见过的词会被过滤。</p>
+    <p className="text-[10px] leading-4 text-muted-foreground">当前这一组会保留，点击右上角刷新键才会更新。难度调整与词语反馈在下次刷新时生效；已收录、已认识及近期见过的词会在新推荐中过滤。难度与用途由模型估计，并非能力测评。</p>
   </section>
 }
