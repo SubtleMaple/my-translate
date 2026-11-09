@@ -2,7 +2,9 @@
 
 Windows 11 本地悬浮窗翻译工具：一边看英文原文，一边翻译、收集生词，词条自动生成音标/释义/例句/近反义词等学习详情。
 
-**当前版本：0.3.0** · [下载安装包](https://github.com/SubtleMaple/my-translate/releases/tag/v0.3.0) · [版本更新记录](CHANGELOG.md)
+**公开 Windows 版本：0.3.0** · [下载安装包](https://github.com/SubtleMaple/my-translate/releases/tag/v0.3.0) · [版本更新记录](CHANGELOG.md)
+
+本文功能说明对应当前源码；Android与最新推荐队列包含后续开发成果，不能仅凭相同版本号判断安装包能力。已发布、本地主线与待验收修复的区别见 [当前开发状态](handbook/CURRENT_STATE.md)。
 
 ## 功能
 
@@ -26,6 +28,8 @@ Electron 33 + electron-vite + React 18 + TypeScript + Tailwind CSS v3 + shadcn/u
 
 ## 本地开发
 
+新开发者/AI先读 [AGENTS.md](AGENTS.md) 和 [开发手册](handbook/README.md)，再按 [需求定位表](handbook/DEVELOPMENT.md) 找实现、按 [验证矩阵](handbook/TESTING_RELEASE.md#验证矩阵) 选择测试。手册随源码维护，不依赖本机 `docs/` 历史资料。
+
 要求：Windows 11、Node.js ≥ 20、pnpm 9（corepack 已启用则无需手动安装）
 
 ```bash
@@ -33,6 +37,7 @@ pnpm install     # 首次安装依赖（国内网络已配置 npmmirror 镜像�
 pnpm dev         # 启动开发模式（HMR + Electron 自动拉起）
 pnpm typecheck   # 类型检查（main + renderer 双配置）
 pnpm test        # esbuild + node:test，隔离测试翻译/入库/搜索竞态
+pnpm docs:check  # 开发文档链接、命令、版本字段与可迁移性检查
 pnpm test:electron # Windows真实Electron集成测试，本地mock接口+临时profile，截图输出docs/qa-reading-flow
 pnpm test:dictionary # 查词/词形归一/主题的Electron集成验证，结果与截图放临时目录
 pnpm test:selection # 同句双saw的位置选择/独立取消/入库/来源高亮回归

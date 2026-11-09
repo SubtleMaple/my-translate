@@ -2,6 +2,8 @@
 
 与 Windows 版共用 React、业务服务、提示词、sql.js v5 数据库结构和 FSRS 算法。普通手机 App，包名 `com.mytranslate.mobile`，当前版本沿用 `0.3.0`。不要求 Google Play 服务。
 
+开发接手先读 [开发手册](../handbook/README.md) 和 [当前状态](../handbook/CURRENT_STATE.md)；共享模块与平台替换见 [架构](../handbook/ARCHITECTURE.md#android)，完整验证顺序见 [测试手册](../handbook/TESTING_RELEASE.md#android设备验证)。本地APK与公开Windows Release可能使用相同版本号而包含不同提交。
+
 ## 安装与使用
 
 1. 把 `release/android/My-Translate-0.3.0.apk` 传到手机，用文件管理器打开安装。系统询问时允许该文件管理器安装此 APK。
@@ -46,7 +48,7 @@ SDK 默认安装到 `%LOCALAPPDATA%\MyTranslateAndroid\tools`。可对 setup/bui
 
 ## 模拟器验证
 
-只对可丢弃的 emulator 设备运行，会写入合成测试词库/设置：
+只对可丢弃的 emulator 设备运行，会写入合成测试词库/设置。**先构建并安装当前产品APK**；以下脚本只安装instrumentation测试APK，完整安装命令见 [测试手册](../handbook/TESTING_RELEASE.md#android设备验证)：
 
 ```powershell
 pwsh -NoProfile -File scripts/test-android.ps1 -Device emulator-5558
