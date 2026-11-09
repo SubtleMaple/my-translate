@@ -31,7 +31,7 @@ export const useRecommendationStore = create<RecommendationStore>((set, get) => 
     load: async (request = {}) => {
       if (request.allowGenerate !== false) {
         if (get().busy) return
-        // 先展示缓存，再在同一生命周期内增量更新；不会清空已有卡片。
+        // 先展示持久队列中的最多三张卡片；仅首次初始化或手动刷新会生成新批次。
         const number = ++requestNumber
         activeGeneration = number
         set({ busy: true, error: '' })
@@ -46,7 +46,7 @@ export const useRecommendationStore = create<RecommendationStore>((set, get) => 
         } catch (e) { if (number === requestNumber) set({ error: message(e) }) }
         finally { if (number === activeGeneration) { activeGeneration = 0; set({ busy: false }) } }
       } else {
-        // 词库变更使旧生成结果失效；静默过滤不额外请求模型。
+        // 词库变更只从本批队列移除已收藏词并补位，不请求模型。
         const number = ++requestNumber
         try {
           const page = await window.api.getRecommendations(request)

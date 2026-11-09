@@ -1,6 +1,6 @@
 import { CEFR_LEVELS, RECOMMENDATION_TOPICS, type LlmSettings, type VocabEntry, type WordRecommendation, type CefrLevel, type RecommendationTopic } from '../../shared/types'
 import type { WordAnalysis } from '../../shared/recommendations'
-import { wordKey } from '../../shared/recommendations'
+import { RECOMMENDATION_BATCH_SIZE, wordKey } from '../../shared/recommendations'
 import { detectInjection } from '../../shared/injection'
 import { focusContext, selectionFromOffsets } from '../../shared/tokenize'
 import { getActiveLlm } from '../../shared/llm'
@@ -19,7 +19,7 @@ export const ANALYSIS_PROMPT = [
 ].join('\n')
 export const RECOMMENDATION_PROMPT = [
   'TASK: recommendations-v1', SAFETY,
-  '根据目标难度、近期阅读主题和生词样本，推荐18个用户可能不认识且值得学的英语单词。只输出JSON。',
+  `根据目标难度、近期阅读主题和生词样本，推荐${RECOMMENDATION_BATCH_SIZE}个用户可能不认识且值得学的英语单词。只输出JSON。`,
   '优先与targetLevel相同难度，仅少量相邻等级；匹配主题且实际常用，保留约四分之一通用实用词。不要用罕见华丽词充数。',
   '避开excluded中的词及其变体，避开discouragedTopics中的过度集中领域。不把生词当成已掌握词。避免同组同词族或全是近义词。',
   '只能推荐单词，word必须是词典词头，lemma与word相同，不能推荐过去式/复数等替代词头；词族family用于控制多样性。',
@@ -83,7 +83,7 @@ export function parseRecommendations(content: string): Omit<WordRecommendation, 
         meaning: text(item.meaning, 90), reason: text(item.reason, 140), utility: item.utility })
     } catch { /* A malformed candidate cannot discard valid cached recommendations. */ }
   }
-  if (valid.size < 3) throw new LlmError('有效推荐不足，请重新生成')
+  if (valid.size === 0) throw new LlmError('有效推荐不足，请重新生成')
   return [...valid.values()]
 }
 export async function analyzeVocabulary(entries: VocabEntry[], settings: LlmSettings, signal: AbortSignal): Promise<WordAnalysis[]> {

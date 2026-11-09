@@ -1,90 +1,73 @@
-# AGENTS.md — 项目开发约定（AI 助手必读）
+# AGENTS.md — AI 开发入口与约定
 
-> 本文件是 AI 编码助手在本仓库工作时的行为规范。所有改动必须遵守本文件；本地文档按下节的可访问性规则读取与遵守。
-> 本地交接见 `docs/进度.md`，需求见 `docs/项目要求.md` / `docs/更新需求.md`，规划见 `docs/plan.md`（历史规划 `docs/history/plan-v1.md`）。
+> 本文件是 AI 编码助手在本仓库工作时的行为规范。所有改动必须遵守本文件；公开交接以handbook为入口，本地资料按下方可访问性规则处理。
 
-## 文档可访问性与备用参考
+## 开始前的阅读顺序
 
-- `docs/` 是由 `.gitignore` 忽略的本地专用文档目录，不保证随仓库提供。当前获授权的工作环境可读时，必须先阅读 `docs/进度.md`，并按任务查阅相关需求与规划；远程 404 或工作区缺失不代表维护者本地不存在。
-- 本地文档不可访问时，先参考同一工作版本的 `README.md`（功能与开发/测试入口）、`CHANGELOG.md`（已发布变更与历史验证），再结合当前任务要求、`package.json`、相关源码与 `tests/` 核实实现和验证方式；这些资料不能代替未公开的需求与交接结论。
-- 在交付说明中列明缺失文件、实际参考与未验证项；继续不依赖缺失信息的工作。若缺失内容影响需求范围、预期行为、验收标准或安全约束，暂停依赖部分并向用户请求最小必要的澄清或可共享摘录，不得臆造需求或宣称已读；历史验证记录不代表本次验证通过。
-- 保留 `docs/` 的忽略规则，不强制提交该目录，不将未经授权公开的本地内容复制到仓库、PR 或公开说明。
+1. 读 [handbook/README.md](handbook/README.md)：全局地图与接手步骤。
+2. 读 [handbook/CURRENT_STATE.md](handbook/CURRENT_STATE.md)：代码基线、已发布/已合并/待验收的区别。
+3. 用 `git status --short --branch`、`git branch -vv`、`git log --oneline -8` 核对真实工作区，不能把文档快照当作实时 Git 状态。
+4. 按任务读 [架构](handbook/ARCHITECTURE.md)、[现行业务规则](handbook/BUSINESS_RULES.md)、[数据模型](handbook/DATA_MODEL.md)，再用 [开发定位表](handbook/DEVELOPMENT.md) 找代码与测试。
+5. 验证/构建/发布看 [TESTING_RELEASE.md](handbook/TESTING_RELEASE.md)；手机安装与工具说明补充见 [android/README.md](android/README.md)。
 
-## 项目概览
+`handbook/` 是应随源码提交的开发手册，不依赖历史聊天、本机日志或临时测试报告。本地 `docs/` 已被 Git 忽略，可辅助追溯，但缺少它不应阻塞新克隆接手；其中旧计划不是当前功能规范。
 
-「英汉翻译 + 生词本」Windows 11 悬浮窗桌面应用（Electron）。核心：流式翻译、原文单词/短语选择入生词本、LLM 自动生成词条详情、生词本检索与管理、极简模式。
+## 本地资料边界
 
-**技术栈（版本已锁定，禁止随意升级大版本）**：Electron 33 / electron-vite 2 / React 18.3 / TypeScript 5.6 / Tailwind CSS v3.4 / shadcn-ui / Zustand 5 / sql.js 1.12（纯 WASM SQLite）/ electron-builder 25（NSIS）。
+- 当前授权环境能访问 `docs/进度.md` 时，开始修改前阅读，并按任务查阅相关历史需求；远程404或工作区缺失不代表维护者本地不存在。
+- 本地资料不可访问时，使用同一版本的手册、README、CHANGELOG、源码和tests核实；交付时说明缺失资料、实际参考及未验证项。若关键需求、验收或安全约束仍不明确，暂停依赖部分并请求最小必要澄清，不能臆造未公开结论。
+- 保留 `docs/` 的忽略规则，不强制提交该目录，不将未经授权公开的本地内容复制到仓库、PR或公开说明。历史验证不代表本次通过。
 
-**红线**：
-- ❌ 禁止引入任何含原生编译（node-gyp/prebuild）的依赖——sql.js 是唯一数据库方案
-- ❌ 禁止渲染进程直接 fetch 外部 API（一切 LLM 流量走主进程 IPC）
-- ❌ 禁止关闭 contextIsolation / 开启 nodeIntegration / 关闭 sandbox
-- ❌ 禁止在仓库提交真实 API Key（Key 只存在于 `%APPDATA%` 用户配置）
+## 项目与边界
 
-## 常用命令
+「英汉翻译 + 生词本」包含 Windows 11 Electron 悬浮窗和独立 Android 普通手机 App。两端复用 React UI、契约、业务服务、sql.js schema、提示词与 FSRS；网络、文件、剪贴板、窗口、导出由平台适配。当前能力包括翻译、逐位置摘词/词形归一、查词、推荐、自测、熟悉度排序、词云/分组和导出。
 
-```bash
-pnpm install       # 依赖安装（pnpm 9，electron/esbuild 已在 onlyBuiltDependencies 白名单）
-pnpm dev           # 开发模式（HMR + Electron）
-pnpm typecheck     # 类型检查（node + web 双配置）
-pnpm build         # 构建三端产物（out/）
-pnpm dist          # 构建 + NSIS 安装包（release/My Translate-Setup-<version>.exe）
-pnpm dist:dir      # 构建 + 免安装目录（release/win-unpacked/My Translate.exe）
-```
+- 技术栈：Electron 33 / electron-vite 2 / React 18.3 / TypeScript 5.6 / Tailwind 3.4 / shadcn/ui / Zustand 5 / sql.js 1.12 / ts-fsrs 5.4.2 / electron-builder 25。准确依赖以 [package.json](package.json) 和 [锁文件](pnpm-lock.yaml) 为准，禁止随意升级大版本。
+- 开发 Node ≥20、pnpm 9；Android 另需 JDK 17+、PowerShell 7、SDK 工具，使用仓库脚本构建，不假设存在 Gradle/Android Studio 工程。
+- Windows、Android 的本地数据独立，不自动同步；Android 首版不含跨应用悬浮窗。
 
-## 目录结构
+## 技术红线
 
-- `src/main/`：窗口（window.ts）、托盘（tray.ts）、IPC（ipc.ts）、设置存储（settings.ts）、LLM 客户端（llm/）、sql.js 数据层（db/）、详情生成队列（services/vocabService.ts）
-- `src/preload/`：contextBridge 白名单 API（严格对应 `src/shared/types.ts` 的 RendererApi）
-- `src/shared/`：**两端共享的类型与纯函数**——types.ts（契约）、ipc.ts（频道常量）、llm.ts（provider 解析）、injection.ts（注入检测 L1）、outputCheck.ts（输出校验 L3）
-- `src/renderer/`：React UI，组件一律 shadcn/ui + Tailwind，图标 lucide-react
+- 禁止引入需要 node-gyp/prebuild 的 Node 依赖。数据库使用 sql.js；Android Java 宿主使用现有 SDK 工具链。
+- UI 不直接访问模型 API：Windows 经 preload/IPC → 主进程 `net.fetch`；Android 经 RPC → 服务 WebView → Java HTTPS。
+- Electron 保持 `contextIsolation: true`、`nodeIntegration: false`、`sandbox: true`。
+- Android 保持 UI/服务 WebView 能力隔离、本地资源白名单、CSP 与 HTTPS 限制；交付 APK 不带测试证书/测试模型/调试桥。
+- 真实 API Key、用户词库、签名私钥、密码及本机配置不入仓库。Windows 配置位于 userData；Android 私有数据由 Keystore 加密保存。
+- 新 UI 使用现有 shadcn/ui、Tailwind、lucide-react 和语义 CSS 变量，覆盖深浅色、窄窗/手机触屏。
 
-**契约先行**：改 IPC 必须先改 `src/shared/types.ts` + `src/shared/ipc.ts`，再同步 preload 与主进程。
+## 修改规则
 
-## Git 工作流
+- **契约先行**：先修改 [types.ts](src/shared/types.ts) / [ipc.ts](src/shared/ipc.ts)，再同步 [preload](src/preload/index.ts)、[handler](src/main/ipc.ts) 及 Android 传输/适配；UI 只使用 `window.api`。
+- **schema 唯一来源**：[databaseSchema.ts](src/shared/databaseSchema.ts)。迁移追加新版本；检查 Android 的较新版本拒绝条件，不在 Windows/Android 各维护一份 DDL。
+- **平台依赖显式适配**：`src/main/services` 也被 Android 复用。添加 Node/Electron 依赖前核对 [Android 构建别名](scripts/build-android-web.cjs)，不能认为“放 main 就只在 Windows 跑”。
+- **落盘**：sql.js 为内存库，变更必须 `markDirty`。Windows 防抖保存并在正常退出 flush；Android 在响应/变更通知前同步保存。数据库事务与平台持久化失败的区别见数据手册。
+- **保持领域语义**：摘录次数≠自测次数≠推荐消费次数；单词位置≠词头去重键；长期熟悉度≠即时回忆率。最新推荐队列规则必须按业务手册检查。
+- **LLM 防御**：保留 L1 输入检测、L2 提示词边界、L3 输出检查；改链路须回归 [dictionary.test.ts](tests/dictionary.test.ts)、[translateStore.test.ts](tests/translateStore.test.ts) 及对应业务测试。涉及防御文件时须回归红队样本；本地报告可用时核对补充样本，不可用时先运行仓库测试、列明专项回归缺口并请求可共享样本或维护者补跑，完成前不得宣称安全回归全部通过或满足合并条件。
 
-- `main` = 稳定基线，永远可运行、可交付
-- 每个功能/修复开独立分支：`git checkout -b feature/简述` 或 `fix/简述`
-- 开发 + 验证全部在分支完成，随后 `git checkout main && git merge --no-ff <分支>`（保留分组历史），合并后删除分支
-- 提交信息：`feat:` / `fix:` / `chore:` / `docs:` + 中文简述
-- **推送 GitHub 需用户显式要求，不得自动 push**
-- 涉及 UI 交互的改动，用户手动验证通过后才合并（用户会说「合并」）
+## 验证与发布
 
-## 文档纪律（每次改动必须）
+- 功能改动至少 `pnpm test`、`pnpm typecheck`、`pnpm build`；涉及共享服务/UI/契约时增加 `pnpm typecheck:android`、`pnpm android:web` 和对应平台集成验证。
+- 按 [验证矩阵](handbook/TESTING_RELEASE.md#验证矩阵) 选择专项。数据/算法测试使用合成数据、可注入时钟与真实 sql.js；网络默认 mock。
+- Electron 冒烟用隔离 `MY_TRANSLATE_USER_DATA`。通过 `Get-CimInstance Win32_Process` 核对本次进程，再按 PID 清理；不要按进程名杀掉用户正在运行的应用。
+- Android instrumentation 只运行在可丢弃模拟器，先安装当前 APK；模拟器通过不等于 HarmonyOS 真机通过。
+- 纯文档改动执行 `pnpm docs:check` 和 `git diff --check` 即可，不为文档修改重建安装包或调用真实模型。
+- 功能批次完成或用户要求时构建交付物；改版本号需用户确认。Android 同时考虑 Manifest 的 versionCode 与签名连续性。
+- 使用正式发布前的构建校验；输出目录被运行程序占用时使用独立目录，具体命令见发布手册。
 
-以下三项在本地 `docs/进度.md` 可读写时执行；不可用时，在交付说明或已获授权的 PR 描述中记录本次变更、实际验证结果与未验证项、待人工验收清单及分支/提交信息（如有），供维护者回填，并注明未同步本地文档。不得创建占位文档或伪造交接记录。
+## Git 与交接纪律
 
-1. 每完成一个功能/修复，**必须**在 `docs/进度.md` 追加完成记录：现象/根因/修复内容/验收结果/待人工验收清单
-2. 同步更新 `docs/进度.md` 顶部「当前状态」与阶段总览表
-3. 分支/提交历史在「Git 工作流约定」节登记
+- `main` 为可交付基线，每个功能/修复/文档整理使用独立分支。当前分支有尚未合并的前置工作时，明确基于哪个提交继续，保留既有修改。
+- 提交、合并、推送和创建 Release 按本次用户授权执行，不把以前一次发布授权延续到新任务。
+- 提交风格：`feat:` / `fix:` / `chore:` / `docs:` + 中文简述。提交前检查 status、diff、最近日志，只纳入预期文件。
+- UI 改动经用户确认后才合并；合并使用 `--no-ff`，成功后安全删除已合并分支；推送需明确授权。
+- 每完成需求，更新 **CURRENT_STATE** 与受影响的主题手册。发布才更新公开 CHANGELOG，不把开发中行为写成已发布事实。
+- 本地 `docs/进度.md` 若可读写，追加现象/根因/内容/实际验证/待验收并同步顶部、阶段表与Git记录；若不可用，使用手册状态页交接并说明未同步本地资料，不创建占位文档或伪造记录。历史资料保留历史日期和适用范围。
+- 手册不依赖用户名、绝对工作路径、临时报告和本地密钥。每次交接先更新现行规则，再追加历史，避免仅在长日志底部修正行为。
 
-## 验证清单（合并前必须全部通过）
+## 常见陷阱
 
-1. `pnpm typecheck` + `pnpm build`
-2. dev 冒烟：`Start-Process pnpm.cmd dev` 后确认 4 个 electron 进程存活、无 stderr；结束用 `Get-CimInstance Win32_Process -Filter "Name='electron.exe'"` 逐个 `Stop-Process -Force`（**勿用 Get-Process 按名杀**，会漏）
-3. 纯逻辑改动（LLM 协议/注入检测/迁移 SQL 等）按既有模式写独立单测：esbuild bundle 项目源码到 `%TEMP%\opencode\<case>\` 下用 node 跑（mock fetch / 真实 sql.js）
-4. 真实 LLM 测试必须先在 shell 设代理：`$env:HTTPS_PROXY='http://127.0.0.1:7897'`（本机系统代理；**Node 直连不跟随系统代理**，Electron 应用内走 net.fetch 不受影响）
-5. 深浅色两种主题各目视一遍（新增组件一律用 shadcn CSS 变量，禁硬编码色）
-
-## 发布流程
-
-- 功能批次完成或用户要求时执行 `pnpm dist` 重建安装包
-- 版本号升级需用户确认（`package.json` version，安装包文件名随版本）
-- `release/` 在 .gitignore 内，构建产物不入库
-- 未签名安装包 SmartScreen 提示属预期（README 已说明）
-
-## 环境与陷阱备忘
-
-- **userData 分离**：dev=`%APPDATA%\my-translate\`，打包版=`%APPDATA%\My Translate\`，数据互不共享（属预期）
-- **单实例锁**：残留进程会占锁导致新实例静默退出（表现为无报错无 db 文件）；排查用 `Get-CimInstance Win32_Process` 按 CommandLine/Name 过滤
-- **强杀进程不触发 before-quit flush**：settings/db 落盘靠正常退出；验证迁移逻辑用真实文件 + 纯函数复算
-- **sql.js 全内存**：所有 DB 变更必须走 `markDirty` → 防抖落盘；退出前 `flushDatabase(true)`
-- **代理**：主进程 LLM 走 `net.fetch`（跟随系统代理）；node 独立测试需手动设环境变量代理
-- **思考型模型**：Anthropic 协议 max_tokens 预算需留 thinking 余量（详情 2000 / 流式 4096）；`thinking:{type:"disabled"}` 可关思考（设置页）
-
-## 安全防御（改动 LLM 链路时必须回归）
-
-- 三层注入防御：L1 `shared/injection.ts`（中文指令输入侧拒绝）、L2 `llm/prompts.ts`（指令层级 + 分隔符包裹）、L3 `shared/outputCheck.ts`（中文主输入非回显 → 警告条）
-- 修改这些文件必须重跑红队样本（本地 `docs/注入攻击测试报告.md` 记录的攻击样本与测试脚本模式）；报告不可访问时，先运行仓库内相关测试，列明红队回归缺口，请用户提供可共享样本或由维护者补跑，回归完成并通过前不得宣称安全回归全部通过或满足合并条件
-- 生词详情链路：contextSentence 命中 L1 则省略原句
+- 同一 `0.3.0` 版本号可对应发布标签、后续本地主线和待合并修复；必须核对提交与工作区。
+- 新增候选补位不能触发自动付费生成；耗尽的空队列与从未初始化的 `null` 不是一回事。
+- Android JSON 数组会把 `undefined` 变 `null`，必须使用现有 RPC 编解码。
+- Windows 关窗是隐藏托盘；强杀不执行 before-quit flush。测试恢复必须实际验证文件与正常退出路径。
+- Electron 跟随系统代理；独立 Node 网络测试和手机网络要分别配置，不能照抄另一台机器的代理端口。

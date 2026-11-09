@@ -15,7 +15,7 @@ export const IPC = {
   LlmLookup: 'llm:lookup',
   LlmLookupAbort: 'llm:lookup:abort',
   LookupSave: 'lookup:save',
-  RecommendationGet: 'recommendation:get',
+  RecommendationGet: 'recommendation:get', // RecommendationPage：最多三张卡片 + 本批剩余数
   RecommendationAbort: 'recommendation:abort',
   RecommendationFeedback: 'recommendation:feedback',
   RecommendationUndo: 'recommendation:undo',

@@ -16,6 +16,7 @@
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json",
     "test": "node tests/run.cjs",
+    "docs:check": "node scripts/check-docs.cjs",
     "test:electron": "pnpm build && electron tests/electron-flow.cjs",
     "test:dictionary": "pnpm build && electron tests/electron-dictionary.cjs",
     "test:selection": "pnpm build && electron tests/electron-selection.cjs",
