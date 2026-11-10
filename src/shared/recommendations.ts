@@ -1,4 +1,4 @@
-import { CEFR_LEVELS, type CefrLevel, type RecommendationTopic, type VocabEntry, type WordRecommendation } from './types'
+import { CEFR_LEVELS, type CefrLevel, type CorpusCandidate, type CorpusMode, type RecommendationTopic, type VocabEntry, type WordRecommendation } from './types'
 
 export interface WordAnalysis {
   entryId: number
@@ -17,7 +17,20 @@ export interface RecommendationHistory {
   lookedUpAt: number
   feedbackWord?: string
 }
+export interface CorpusJob {
+  id: string
+  targetLevel: CefrLevel
+  inputs: CorpusCandidate[]
+  skippedIndices?: number[]
+  kept: CorpusCandidate[]
+  done: number
+  preview?: { batchIds: Record<string, string>; acceptedIndices: number[]; removed: string[] }
+}
 export interface RecommendationState {
+  corpusPool: CorpusCandidate[]
+  corpusMode?: CorpusMode
+  corpusNotice?: string
+  corpusJob?: CorpusJob
   coldLevel: CefrLevel | null
   adjustment: number
   currentIds: string[]
@@ -31,7 +44,7 @@ export interface RecommendationState {
   lastError: string
 }
 export const DEFAULT_RECOMMENDATION_STATE: RecommendationState = {
-  coldLevel: null, adjustment: 0, currentIds: [], batchIds: null, queueIds: [], profileKey: '', generatedAt: 0, lastAttempt: 0, lastError: ''
+  corpusPool: [], coldLevel: null, adjustment: 0, currentIds: [], batchIds: null, queueIds: [], profileKey: '', generatedAt: 0, lastAttempt: 0, lastError: ''
 }
 export const RECOMMENDATION_BATCH_SIZE = 10
 export const DAY = 86_400_000

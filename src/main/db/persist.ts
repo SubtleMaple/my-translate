@@ -19,7 +19,7 @@ export function markDirty(): void {
 }
 
 /** @param force 退出/建表等场景强制写盘（忽略脏标记） */
-export function flushDatabase(force = false): void {
+export function flushDatabase(force = false, reportFailure = false): void {
   if (timer) {
     clearTimeout(timer)
     timer = null
@@ -35,5 +35,6 @@ export function flushDatabase(force = false): void {
     dirty = false
   } catch (e) {
     console.error('[db] 落盘失败:', e)
+    if (reportFailure) throw Error('保存审校进度失败，请检查磁盘空间后继续。')
   }
 }

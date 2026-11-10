@@ -27,7 +27,7 @@ import {
 } from './services/vocabService'
 import { normalizeSelections } from './llm/normalizeWord'
 import { abortLookup, lookupWord, saveLookup } from './services/lookupService'
-import { abortRecommendations, getRecommendations, recommendationFeedback, recommendedLookupTarget, setRecommendationPreference, undoRecommendationFeedback } from './services/recommendationService'
+import { abortRecommendations, getRecommendations, importCorpus, setCorpusMode, advanceCorpusReview, pauseCorpusReview, discardCorpusReview, recommendationFeedback, recommendedLookupTarget, removeCorpusWord, removeCorpusWords, reviewCorpusWords, setRecommendationPreference, undoRecommendationFeedback } from './services/recommendationService'
 import { createVocabExporter } from './services/vocabExportService'
 import { createReviewService } from './services/reviewService'
 import { getVocabViewEntry, queryVocabView } from './services/vocabViewService'
@@ -81,13 +81,21 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC.LlmLookupAbort, (_e, id: string) => abortLookup(id))
   ipcMain.handle(IPC.RecommendationGet, (_e, request?: RecommendationRequest) => getRecommendations(request))
   ipcMain.handle(IPC.RecommendationAbort, () => abortRecommendations())
+  ipcMain.handle(IPC.CorpusImport, (_e, words, mode) => importCorpus(words, mode))
+  ipcMain.handle(IPC.CorpusMode, (_e, mode) => setCorpusMode(mode))
+  ipcMain.handle(IPC.CorpusAdvance, (_e, id, offset) => advanceCorpusReview(id, offset))
+  ipcMain.handle(IPC.CorpusPause, (_e, id) => pauseCorpusReview(id))
+  ipcMain.handle(IPC.CorpusDiscard, (_e, id) => discardCorpusReview(id))
+  ipcMain.handle(IPC.CorpusReviewExisting, (_e, words) => reviewCorpusWords(words))
+  ipcMain.handle(IPC.CorpusRemoveMany, (_e, words) => removeCorpusWords(words))
+  ipcMain.handle(IPC.CorpusRemove, (_e, word) => removeCorpusWord(word))
   ipcMain.handle(IPC.RecommendationFeedback, (_e, id: string, kind: 'known' | 'skip') => recommendationFeedback(id, kind))
   ipcMain.handle(IPC.RecommendationUndo, (_e, word: string) => undoRecommendationFeedback(word))
   ipcMain.handle(IPC.RecommendationPreference, (_e, patch: RecommendationPreference) => setRecommendationPreference(patch))
   ipcMain.handle(IPC.RecommendationLookup, (_e, requestId: string, id: string) => {
     abortRecommendations()
     const item = recommendedLookupTarget(id)
-    return lookupWord(requestId, item.word, { pos: item.pos, meaning: item.meaning })
+    return lookupWord(requestId, item.word, item.source === 'corpus' ? undefined : { pos: item.pos, meaning: item.meaning })
   })
   ipcMain.handle(IPC.LookupSave, (_e, id: string) => {
     const result = saveLookup(id)

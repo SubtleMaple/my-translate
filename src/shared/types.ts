@@ -43,7 +43,22 @@ export const TOPIC_LABELS: Record<RecommendationTopic, string> = {
   literature: '文学', academic: '学术', health: '健康', travel: '旅行'
 }
 export interface WordSenseHint { pos: string; meaning: string }
+export interface CorpusWord { word: string; count: number }
+export type CorpusMode = 'local' | 'ai'
+export interface CorpusCandidate extends CorpusWord {
+  spelling?: string
+  forms?: string[]
+  level?: CefrLevel
+}
+export interface CorpusProgress {
+  skipped?: number
+  id: string
+  total: number
+  done: number
+}
 export interface WordRecommendation extends WordSenseHint {
+  source?: 'corpus'
+  corpusEvidence?: CorpusCandidate
   id: string
   word: string
   forms: string[]
@@ -61,6 +76,11 @@ export interface RecommendationFeedback {
   updatedAt: number
 }
 export interface RecommendationPage {
+  corpusMode: CorpusMode
+  corpusProgress: CorpusProgress | null
+  corpusNotice: string
+  corpusCount: number
+  corpusPreview: { batch: string[]; pending: string[] }
   items: WordRecommendation[]
   /** 本批尚未消费的词数，包含当前展示的最多三个。 */
   remainingCount: number
@@ -337,6 +357,14 @@ export interface RendererApi {
   lookupWord(requestId: string, word: string): Promise<WordLookup>
   lookupRecommendation(requestId: string, recommendationId: string): Promise<WordLookup>
   getRecommendations(request?: RecommendationRequest): Promise<RecommendationPage>
+  importCorpus(words: CorpusWord[], mode?: CorpusMode): Promise<RecommendationPage>
+  setCorpusMode(mode: CorpusMode): Promise<RecommendationPage>
+  advanceCorpusReview(id: string, offset: number): Promise<RecommendationPage>
+  pauseCorpusReview(id: string): Promise<void>
+  discardCorpusReview(id: string): Promise<RecommendationPage>
+  reviewCorpusWords(words: string[]): Promise<RecommendationPage>
+  removeCorpusWords(words: string[]): Promise<RecommendationPage>
+  removeCorpusWord(word: string): Promise<RecommendationPage>
   abortRecommendations(): Promise<void>
   recommendationFeedback(id: string, kind: 'known' | 'skip'): Promise<RecommendationPage>
   undoRecommendationFeedback(word: string): Promise<RecommendationPage>

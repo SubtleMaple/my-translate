@@ -89,6 +89,14 @@ Android UI 的 `process.platform` 在构建时定义为 `android`，页面通过
 
 `recordLookup` 只在详情成功且未取消后执行，负责查词历史与本批推荐消费。收藏用结果ID读取主进程缓存，复用解释。推荐生成、读队列和消费是不同操作，完整状态机见业务手册。
 
+语料经系统文件选择器进入共享 UI。[提取器](../src/renderer/src/lib/corpusFile.ts) 解码文本、解压 DOCX 正文，PDF 在独立本地 Worker 中逐页提取。UI 只将有界的英文词频通过 `window.api.importCorpus` 交给服务；[本地筛选](../src/main/services/corpusRanking.ts) 结合已有词库与历史反馈，结果沿用双端推荐状态持久化。Android 可见 WebView 仅接收系统选择的 content URI。
+
+AI 导入复用 [模型客户端](../src/main/llm/client.ts) 和[词表审校器](../src/main/llm/corpusReview.ts)。导入/继续操作按任务 ID 及已完成位置驱动每次单批 RPC，主进程或 Android 服务端校验结果并持久化检查点，UI 可以在批间显示进度。原文留在提取端。
+
+预览通过 `reviewCorpusWords` 或 `removeCorpusWords` 一次提交所选拼写，服务端用当前未消费队列与储备池核对范围。复筛沿用单批 RPC。
+
+预览与推荐页使用同一份页面快照，通过 `window.api.removeCorpusWord` 在主进程或 Android 服务端移除目标，再用返回的快照同步卡片、计数与预览。
+
 ### 自测与学习视图
 
 `startReview → 选择队列 → reveal → rate → FSRS.next → 记忆/事件/会话事务 → ReviewChanged`

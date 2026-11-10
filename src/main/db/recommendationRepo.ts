@@ -55,6 +55,19 @@ export function saveCandidates(items: Omit<WordRecommendation, 'id'>[], now: num
     db.run('COMMIT'); markDirty()
   } catch (error) { db.run('ROLLBACK'); throw error }
 }
+/** Replace reviewed card payloads and their queue/pool checkpoint in one transaction. */
+export function saveCorpusRevision(state: RecommendationState, cards: WordRecommendation[]): void {
+  const db = getDb()
+  db.run('BEGIN')
+  try {
+    for (const card of cards) db.run('DELETE FROM recommendation_candidates WHERE id=?', [card.id])
+    for (const card of cards) db.run('INSERT OR REPLACE INTO recommendation_candidates (id,word_lower,payload,created_at) VALUES (?,?,?,?)',
+      [card.id, wordKey(card.word), JSON.stringify(card), Date.now()])
+    saveRecommendationState(state)
+    db.run('COMMIT')
+  } catch (error) { db.run('ROLLBACK'); throw error }
+}
+
 function consumeCandidates(words: string[]): void {
   const state = getRecommendationState()
   if (state.batchIds === null) return // 旧版缓存将在首次读取时按历史记录迁移。
