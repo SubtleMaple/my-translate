@@ -25,5 +25,5 @@ $adb = "$tools\platform-tools\platform-tools\adb.exe"
 Run $adb @('-s', $Device, 'install', '--no-incremental', '-r', "$work\signed.apk")
 $output = & $adb -s $Device shell am instrument -w -e phase $Phase com.mytranslate.mobile.tests/com.mytranslate.mobile.tests.SmokeTest
 $output | Tee-Object -FilePath "docs/qa-android/$Device-$Phase.txt"
-Run $adb @('-s', $Device, 'pull', '/sdcard/Android/data/com.mytranslate.mobile/files', "docs/qa-android/$Device")
+if ($Phase -in @('full','reload')) { Run $adb @('-s', $Device, 'pull', '/sdcard/Android/data/com.mytranslate.mobile/files', "docs/qa-android/$Device") }
 if (($output -join "`n") -notmatch 'ANDROID_CHECKS_PASSED' -or ($output -join "`n") -match 'FAIL') { throw 'Android instrumentation failed' }

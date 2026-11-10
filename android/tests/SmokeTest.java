@@ -72,6 +72,93 @@ public final class SmokeTest extends Instrumentation {
     }
     throw new Exception("Document picker did not open");
   }
+  private void importCorpusPdf() throws Exception {
+    String name = "corpus-" + System.currentTimeMillis() + ".pdf";
+    android.content.ContentValues values = new android.content.ContentValues();
+    values.put("_display_name", name); values.put("mime_type", "application/pdf");
+    android.content.ContentResolver resolver = getTargetContext().getContentResolver();
+    android.net.Uri uri = resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+    try {
+      android.graphics.pdf.PdfDocument pdf = new android.graphics.pdf.PdfDocument();
+      try (OutputStream output = resolver.openOutputStream(uri)) {
+        android.graphics.pdf.PdfDocument.Page page = pdf.startPage(new android.graphics.pdf.PdfDocument.PageInfo.Builder(240, 80, 1).create());
+        page.getCanvas().drawText("gravity gravity", 10, 40, new android.graphics.Paint());
+        pdf.finishPage(page); pdf.writeTo(output);
+      } finally { pdf.close(); }
+      click("查词");
+      if ("corpus-ai".equals(phase)) {
+        check("select AI corpus screening", "const s=document.querySelector('select');s.value='ai';s.dispatchEvent(new Event('change',{bubbles:true}));for(let i=0;i<50;i++){if((await api.getRecommendations({allowGenerate:false})).corpusMode==='ai')return true;await new Promise(r=>setTimeout(r,100))}throw Error('mode')");
+      }
+      // Exercise the granted content URI directly on older system picker versions too.
+      android.content.IntentFilter filter = new android.content.IntentFilter(Intent.ACTION_OPEN_DOCUMENT);
+      filter.addCategory(Intent.CATEGORY_OPENABLE);
+      filter.addDataType("*/*");
+      ActivityMonitor provider = "corpus-provider".equals(phase)
+        ? addMonitor(filter, new ActivityResult(Activity.RESULT_OK, new Intent().setData(uri)), true) : null;
+      // Use a real tap so the WebView grants the file chooser a user gesture.
+      String coordinates = async("const b=[...document.querySelectorAll('button')].find(e=>e.textContent.includes('导入语料'));b.scrollIntoView({block:'center'});const r=b.getBoundingClientRect();return JSON.stringify([(r.x+r.width/2)*devicePixelRatio,(r.y+r.height/2)*devicePixelRatio])");
+      org.json.JSONArray point = new org.json.JSONArray(coordinates);
+      int[] offset = new int[2]; runOnMainSync(() -> ui.getLocationOnScreen(offset));
+      long time = android.os.SystemClock.uptimeMillis();
+      for (int action : new int[]{0,1}) {
+        android.view.MotionEvent event = android.view.MotionEvent.obtain(time, android.os.SystemClock.uptimeMillis(), action, offset[0]+(float)point.getDouble(0), offset[1]+(float)point.getDouble(1), 0);
+        event.setSource(android.view.InputDevice.SOURCE_TOUCHSCREEN); sendPointerSync(event); event.recycle();
+      }
+      if (provider == null) selectCorpusDocument(name);
+      else {
+        for (int i=0;i<40 && provider.getHits()==0;i++) Thread.sleep(100);
+        removeMonitor(provider);
+        if (provider.getHits() != 1) throw new Exception("Document picker not invoked");
+      }
+      if ("corpus-ai".equals(phase)) {
+        check("word review progress", "for(let i=0;i<100;i++){if(document.querySelector('progress'))return true;await new Promise(r=>setTimeout(r,50))}throw Error(document.body.innerText)");
+      }
+      check("PDF import and local batch", "for(let i=0;i<120;i++){const err=document.querySelector('[role=alert]');if(err)throw Error(err.innerText);const p=await api.getRecommendations({allowGenerate:false});if(p.corpusCount){const next=await api.getRecommendations({action:'refresh'});if(!next.items.some(x=>x.source==='corpus'&&x.word==='gravity'))throw Error('wrong PDF word');return true}if(p.items.some(x=>x.source==='corpus'&&x.word==='gravity'))return true;await new Promise(r=>setTimeout(r,100))}throw Error(document.body.innerText)");
+      click("翻译"); click("查词");
+      if ("corpus-ai".equals(phase)) {
+        check("open preview", "document.querySelector('[aria-label=预览语料词]').click();await new Promise(r=>setTimeout(r,200));const d=document.querySelector('[role=dialog]');if(!d?.innerText.includes('gravity'))throw Error('preview');[...d.querySelectorAll('button')].find(b=>b.textContent==='关闭').click();return true");
+        check("detail on tap", "[...document.querySelectorAll('button')].find(b=>b.getAttribute('aria-label')==='查询推荐词 gravity').click();for(let i=0;i<100;i++){if(document.querySelector('article h2')?.textContent==='gravity')return true;await new Promise(r=>setTimeout(r,100))}throw Error(document.body.innerText)");
+        return;
+      }
+      check("preview and remove imported word",
+        "const button=label=>[...document.querySelectorAll('button')].find(b=>b.getAttribute('aria-label')===label);" +
+        "const wait=async f=>{for(let i=0;i<80;i++){if(f())return;await new Promise(r=>setTimeout(r,80))}throw Error('preview did not update')};" +
+        "await wait(()=>button('预览语料词'));button('预览语料词').click();await wait(()=>button('删除语料词 gravity'));" +
+        "button('删除语料词 gravity').click();await wait(()=>!button('删除语料词 gravity'));" +
+        "const p=await api.getRecommendations({allowGenerate:false});if([...p.corpusPreview.batch,...p.corpusPreview.pending].includes('gravity'))throw Error('removed word returned');return true");
+    } finally { resolver.delete(uri, null, null); }
+  }
+  private void reviewExistingWords() throws Exception {
+    check("import local corpus", "await api.importCorpus([{word:'gravity',count:2},{word:'timber',count:1}],'local');return true");
+    click("查词");
+        check("screen local candidates and bulk delete in preview",
+          "const wait=async f=>{for(let i=0;i<120;i++){if(f())return;await new Promise(r=>setTimeout(r,80))}throw Error(document.body.innerText)};" +
+          "document.querySelector('[aria-label=预览语料词]').click();const dialog=()=>document.querySelector('[role=dialog]');" +
+          "const button=text=>[...dialog().querySelectorAll('button')].find(b=>b.textContent.includes(text));" +
+          "await wait(()=>dialog()&&button('AI 精筛全部'));button('AI 精筛全部').click();await wait(()=>dialog().querySelector('progress'));" +
+          "await wait(()=>dialog().innerText.includes('1 个词的审校结果无效'));dialog().querySelector('[aria-label=全选所有页]').click();" +
+          "await wait(()=>button('删除所选（2）'));button('删除所选（2）').click();await wait(()=>dialog().innerText.includes('暂无待推荐'));return true");
+  }
+  private void selectCorpusDocument(String name) throws Exception {
+    waitPicker(); Thread.sleep(650);
+    boolean opened = false;
+    for (int i=0;i<30 && !opened;i++) {
+      android.view.accessibility.AccessibilityNodeInfo root = getUiAutomation().getRootInActiveWindow();
+      if (root != null) for (android.view.accessibility.AccessibilityNodeInfo node : root.findAccessibilityNodeInfosByText(name)) {
+        if (!name.contentEquals(node.getText() == null ? "" : node.getText())) continue;
+        android.graphics.Rect bounds = new android.graphics.Rect();
+        node.getBoundsInScreen(bounds);
+        if (bounds.isEmpty()) continue;
+        try (InputStream shell = new android.os.ParcelFileDescriptor.AutoCloseInputStream(
+            getUiAutomation().executeShellCommand("input tap " + bounds.centerX() + " " + bounds.centerY()))) {
+          while (shell.read() != -1) { /* Wait for the system tap. */ }
+        }
+        opened = true; break;
+      }
+      if (!opened) Thread.sleep(200);
+    }
+    if (!opened) throw new Exception("PDF missing from system picker");
+  }
   @Override public void onStart() {
     Bundle results = new Bundle();
     try {
@@ -81,7 +168,16 @@ public final class SmokeTest extends Instrumentation {
       long deadline = System.currentTimeMillis() + 45000;
       while (!"true".equals(evaluate(ui, "!!document.querySelector('#source-text')"))) { if (System.currentTimeMillis() > deadline) throw new Exception("App startup: " + evaluate(service, "document.body.innerText")); Thread.sleep(150); }
       check("native API and viewport", "if(window.api.platform!=='android')throw Error('platform');if(document.documentElement.scrollWidth>innerWidth+1)throw Error('overflow');return true");
-      if ("reload".equals(phase)) {
+      if ("corpus-ai".equals(phase) || "corpus-preview".equals(phase)) {
+        try (MockModel model = new MockModel(getContext())) {
+          evaluate(ui, "window.__modelUrl="+JSONObject.quote(model.url()));
+          check("configure isolated model", "await api.setSettings({llm:{type:'openai',openai:{baseURL:window.__modelUrl,apiKey:'synthetic-test-only',model:'android-test',thinking:'off'}}});return true");
+          if ("corpus-preview".equals(phase)) reviewExistingWords(); else importCorpusPdf();
+          if (model.corpusRequests!=1 || model.requests!=("corpus-preview".equals(phase)?1:3)) throw new Exception("unexpected model calls: "+model.requests);
+        }
+      } else if ("corpus".equals(phase) || "corpus-provider".equals(phase)) {
+        importCorpusPdf();
+      } else if ("reload".equals(phase)) {
         check("encrypted settings, vocabulary and review survive process restart", "const s=await api.getSettings();const v=await api.listVocab({});if(s.llm.openai.model!=='android-test'||!v.some(x=>x.note==='Android persistent note'))throw Error('lost data');const o=await api.reviewOverview();if(!o)throw Error('lost review');return true");
         File expected = new File(getTargetContext().getExternalFilesDir(null), "test-recommendation-ids.json");
         byte[] bytes = new byte[(int)expected.length()];

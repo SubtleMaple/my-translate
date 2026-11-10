@@ -10,6 +10,7 @@
 | 纯逻辑、仓储、服务 | `pnpm test`、`pnpm typecheck`、`pnpm build` | 真实sql.js/可注入时钟；共享代码还需Android类型与Web构建 |
 | 共享UI/契约/提示词/服务 | 上述 + `pnpm typecheck:android`、`pnpm android:web` | 对应Electron专项；相关Android原生能力测试与手机布局 |
 | 翻译/选词/LLM协议 | `pnpm test:electron`、`pnpm test:selection`、`pnpm test:dictionary`中受影响项 | 注入/取消/流式/重复位置；手机触屏与HTTPS桥 |
+| 语料导入 | 推荐专项含带压缩流的 PDF、无文字 PDF、分段 DOCX、Markdown、离线刷新、预览与逐词移除 | Android 模拟器另运行 instrumentation 的 corpus 阶段，实际选择 PDF；corpus-provider 阶段直接返回真实文档提供方 URI，验证 WebView 读文件到入池 |
 | 推荐队列/反馈 | `pnpm test:recommendations` | 十词逐项消费至0、回退失败、两端重启；禁止额外推荐请求 |
 | 自测/FSRS | `pnpm test:review` | 评分幂等、撤销、跨天/短期加练、前面不泄露答案 |
 | 熟悉度/词云/排序 | `pnpm test:vocab-visuals` | 未测/时钟回拨、同日多次评分、字体碰撞、窄宽深浅 |
@@ -17,6 +18,16 @@
 | Android Java/网络/存储/构建 | `pnpm typecheck:android`、`pnpm android:apk`及受影响测试 | 当前APK实装、instrumentation full/reload、真机验收 |
 
 专项命令通常会先执行一次Windows build；连续运行多个已构建专项可用 `pnpm exec electron tests/对应脚本.cjs` 避免重复构建。必须先确保out确实来自当前代码。
+
+逐词审校回归含 40 词中 1 条无效、乱序/缺失/重复编号、预览原词保护与检查点恢复。
+
+预览管理回归覆盖跨页勾选和全选、批量删除、当前候选复筛、失败恢复和审校期间的删除。Android 可在安装当前 APK 的可丢弃模拟器执行 instrumentation 的 `corpus-preview` 阶段。
+
+### 语料精筛质量
+
+`pnpm test` 使用合成词表与双协议 mock 验证归并、难度、严格输出校验、中断与持久化。Electron 推荐专项覆盖选文件、审校进度、预览和点击后生成详情。Android instrumentation 的 `corpus-ai` 阶段在可丢弃模拟器上通过真实文件选择器和测试 HTTPS 模型覆盖这条链路。
+
+需要评估具体服务商时，主动配置环境变量 `CORPUS_API_TYPE`（openai 或 anthropic）、`CORPUS_API_URL`（HTTPS 基址）、`CORPUS_API_KEY` 与 `CORPUS_MODEL`，运行 `pnpm eval:corpus`。它只发送[固定合成词表](../tests/corpus-cases.json)预筛出的候选，并输出 B2 画像下各类误收、漏收和最终词头，可用 PowerShell 的 `Out-File` 将结果留在本地。每次运行会实际调用配置的模型。
 
 ## 可复现测试入口
 

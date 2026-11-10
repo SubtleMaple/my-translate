@@ -8,7 +8,7 @@ process.env.MY_TRANSLATE_USER_DATA = profile
 app.setPath('userData', profile); app.setAppPath(repo)
 const report = { profile, checks: [], screenshots: [], failures: [] }
 const names = ('compile render deploy latency throughput interface protocol robust scalable constraint insight nuance adapt sustain clarify coherent derive feasible reliable concise efficient coherent resilient framework algorithm database software hardware memory storage bandwidth browser server client packet router component module function variable constant parameter argument return process thread task queue stack buffer stream event signal channel socket address route monitor measure estimate evaluate infer deduce justify contrast compare distinguish interpret analyze synthesize assess examine explore discover observe predict anticipate perceive recognize acknowledge consider reflect ponder resolve improve enhance refine optimize simplify reduce expand extend maintain preserve restore recover support enable facilitate establish develop construct compose assemble integrate combine connect separate isolate protect secure ensure verify validate confirm demonstrate illustrate explain express convey imply suggest indicate reveal highlight emphasize identify define describe summarize outline propose recommend require acquire retain obtain achieve accomplish deliver provide contribute cooperate collaborate coordinate negotiate implement execute operate perform conduct manage organize arrange allocate distribute transfer transform convert generate create design innovate invent investigate research experiment simulate calculate compute quantify classify categorize prioritize balance adapt accelerate tolerate mitigate prevent avoid detect diagnose debug troubleshoot repair replace upgrade migrate automate configure customize document communicate articulate persuade appreciate cherish embrace flourish thrive venture wander linger glimpse perceive').split(' ')
-const counters = { analysis: 0, recommendations: 0, details: 0, normalization: 0, batchSizes: [], recommendationBatches: [] }
+const counters = { corpus: 0, analysis: 0, recommendations: 0, details: 0, normalization: 0, batchSizes: [], recommendationBatches: [] }
 let win, server, fail = false, slow = false
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 const evaluate = (fn, ...args) => win.webContents.executeJavaScript(`(${fn.toString()})(...${JSON.stringify(args)})`, true)
@@ -60,7 +60,14 @@ async function main() {
     const body = JSON.parse(raw), system = body.system || body.messages[0].content
     const user = body.messages.find(m => m.role === 'user').content
     let content
-    if (system.includes('vocabulary-analysis-v1')) {
+    if (system.includes('corpus-screen-v1')) {
+      counters.corpus++
+      const input = JSON.parse(user)
+      assert.ok(!user.includes('PRIVATE_NOTE') && !user.includes('proof.txt'))
+      await sleep(500)
+      content = JSON.stringify({ decisions: input.candidates.map(c => ({ id: c.id, lemma: c.word, level: input.targetLevel,
+        action: c.word === 'undertaker' ? 'keep' : 'drop', reason: c.word === 'ken' ? 'unknown-code' : c.word === 'undertaker' ? 'useful' : 'basic' })) })
+    } else if (system.includes('vocabulary-analysis-v1')) {
       counters.analysis++
       const input = JSON.parse(user); counters.batchSizes.push(input.vocabulary.length)
       assert.ok(!user.includes('PRIVATE_NOTE'))
@@ -240,6 +247,92 @@ async function main() {
   assert.ok(db.exec('SELECT count(*) FROM recommendation_analysis')[0].values[0][0] >= 7)
   assert.equal(db.exec('SELECT count(*) FROM vocabulary')[0].values[0][0], 7)
   db.close()
+  const fixtures = require('./helpers/corpus.cjs')
+  async function importFile(name, bytes, expected) {
+    await evaluate((name, encoded) => {
+      const input = document.querySelector('input[type=file]')
+      const transfer = new DataTransfer()
+      transfer.items.add(new File([Uint8Array.from(atob(encoded), c => c.charCodeAt(0))], name))
+      input.files = transfer.files
+      input.dispatchEvent(new Event('change', { bubbles: true }))
+    }, name, Buffer.from(bytes).toString('base64'))
+    await until(() => evaluate(() => ![...document.querySelectorAll('button')].find(b => b.textContent.includes('导入语料')).disabled), 'import finished')
+    const messages = await evaluate(() => document.body.innerText)
+    assert.ok(messages.includes(expected), messages)
+  }
+  const beforeImports = counters.recommendations
+  await importFile('chapter.pdf', fixtures.pdf('gravity gravity'), '已从语料加入 1')
+  await importFile('chapter.pdf', fixtures.pdf('gravity gravity'), '没有新增')
+  await importFile('blank.pdf', fixtures.pdf(''), '没有可提取的文字层')
+  await importFile('chapter.docx', fixtures.docx(), '已从语料加入 1')
+  await importFile('chapter.md', Buffer.from('The fossil'), '已从语料加入 1')
+  await importFile('notes.txt', Buffer.from('\ufeffmineral', 'utf16le'), '已从语料加入 1')
+  await importFile('broken.docx', Buffer.from('damaged'), '无法解压 DOCX')
+  assert.deepEqual(await words(), persistedWords)
+  await ariaClick('更新推荐'); await settled()
+  const corpusPage = await evaluate(() => window.api.getRecommendations({ allowGenerate: false }))
+  assert.equal(corpusPage.remainingCount, 4)
+  const visible = await words()
+  await ariaClick('已认识 ' + visible[0]); await settled()
+  assert.deepEqual([...new Set([...visible, ...await words()])].sort(), ['fossil', 'granite', 'gravity', 'mineral'])
+  await ariaClick('预览语料词')
+  const lastWords = await words()
+  for (const word of lastWords) {
+    await ariaClick('删除语料词 ' + word)
+    await until(() => evaluate(w => ![...document.querySelectorAll('[role="dialog"] button')].some(b => b.getAttribute('aria-label') === '删除语料词 ' + w), word), 'removed corpus word')
+  }
+  assert.ok(await evaluate(() => document.querySelector('[role="dialog"]').innerText.includes('暂无待推荐的语料词')))
+  await evaluate(() => document.querySelector('[role="dialog"] button').click())
+  assert.deepEqual(await words(), [])
+  assert.equal(counters.recommendations, beforeImports)
+  report.checks.push('compressed PDF, empty PDF, split DOCX runs and Markdown through the file input; duplicate import, batch preservation and offline refresh')
+  const detailsBeforeReview = counters.details
+  await evaluate(() => {
+    const select = document.querySelector('select[aria-label="语料筛选模式"]')
+    select.value = 'ai'; select.dispatchEvent(new Event('change', { bubbles: true }))
+  })
+  await until(() => evaluate(() => document.body.innerText.includes('按模型用量计费')), 'AI mode persisted')
+  const importing = importFile('proof.txt', Buffer.from('Ken undertaker swimmer talker businessmen calmly'), 'AI 精筛完成')
+  await until(() => evaluate(() => !!document.querySelector('progress[aria-label="语料精筛进度"]')), 'word review progress')
+  await importing
+  assert.ok(await evaluate(() => document.body.innerText.includes('1 个词的审校结果无效')))
+  assert.deepEqual(await words(), ['undertaker'])
+  assert.equal(counters.corpus, 1); assert.equal(counters.details, detailsBeforeReview)
+  await ariaClick('预览语料词')
+  assert.ok(await evaluate(() => document.querySelector('[role="dialog"]').innerText.includes('undertaker')))
+  await evaluate(() => [...document.querySelectorAll('[role="dialog"] button')].find(b=>b.textContent==='关闭').click())
+  await ariaClick('查询推荐词 undertaker')
+  await until(() => evaluate(() => document.querySelector('article h2')?.textContent === 'undertaker'), 'AI corpus lookup')
+  assert.equal(counters.details, detailsBeforeReview + 1)
+  report.checks.push('AI file import sends only shortlisted words, shows progress, opens preview and generates detail on lookup')
+  const sample = require('norvig-frequencies').slice(5100,5250).map(word=>({word:word.toLowerCase(),count:1})).filter(x=>/^[a-z]{3,32}$/.test(x.word))
+  await evaluate(sample => window.api.importCorpus(sample,'local'), sample)
+  await queryInput(''); await settled()
+  await ariaClick('预览语料词')
+  const dialogClick = label => evaluate(label => [...document.querySelectorAll('[role="dialog"] button')].find(b=>b.textContent.trim()===label).click(),label)
+  const pickFirst = () => evaluate(() => {
+    const box=document.querySelector('[role="dialog"] li input')
+    box.click()
+    return box.getAttribute('aria-label').slice(3)
+  })
+  const firstPick = await pickFirst()
+  await dialogClick('下一页')
+  const next = await pickFirst()
+  await dialogClick('删除所选（2）')
+  await until(() => evaluate(async ([first,next])=>{
+    const p=(await window.api.getRecommendations({allowGenerate:false})).corpusPreview
+    return ![...p.batch,...p.pending].some(w=>w===first||w===next)
+  },[firstPick,next]),'cross-page delete')
+  const chosen = await pickFirst()
+  await dialogClick('AI 精筛所选（1）')
+  await until(() => evaluate(() => document.querySelector('[role="dialog"]').innerText.includes('候选词精筛完成')), 'preview AI finished')
+  assert.ok(!(await evaluate(async ()=>(await window.api.getRecommendations({allowGenerate:false})).corpusPreview.pending)).includes(chosen))
+  assert.equal(counters.corpus,2)
+  await evaluate(()=>document.querySelector('input[aria-label="全选所有页"]').click())
+  await evaluate(()=>[...document.querySelectorAll('[role="dialog"] button')].find(b=>b.textContent.startsWith('删除所选')).click())
+  await until(()=>evaluate(()=>document.querySelector('[role="dialog"]').innerText.includes('暂无待推荐的语料词')), 'select all pages and delete')
+  await dialogClick('关闭')
+  report.checks.push('multi-page selection, bulk removal, preview AI screening and select-all')
   await evaluate(() => document.querySelector('button[title="极简模式"]').click())
   await until(() => evaluate(() => !!document.querySelector('#minimal-text')), 'minimal')
   assert.equal(await evaluate(() => !!document.querySelector('[aria-label="为你推荐"]')), false)

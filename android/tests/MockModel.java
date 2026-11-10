@@ -13,6 +13,7 @@ final class MockModel implements AutoCloseable {
   private final SSLServerSocket server;
   private final java.util.concurrent.ExecutorService threads = Executors.newCachedThreadPool();
   volatile int requests;
+  volatile int corpusRequests;
   final java.util.concurrent.atomic.AtomicInteger analysisRequests = new java.util.concurrent.atomic.AtomicInteger();
   final java.util.concurrent.atomic.AtomicInteger recommendationRequests = new java.util.concurrent.atomic.AtomicInteger();
   MockModel(Context context) throws Exception {
@@ -57,7 +58,19 @@ final class MockModel implements AutoCloseable {
         if(message.getString("role").equals("user"))user=message.getString("content");
         if(message.getString("role").equals("system"))system=message.getString("content");
       }
-      if(system.contains("vocabulary-analysis-v1")){
+      if(system.contains("corpus-screen-v1")){
+        corpusRequests++;
+        JSONObject data=new JSONObject(user);
+        if(data.length()!=2 || !data.has("targetLevel")) throw new IOException("unexpected corpus payload");
+        JSONArray words=data.getJSONArray("candidates"),decisions=new JSONArray();
+        for(int i=0;i<words.length();i++){
+          JSONObject item=words.getJSONObject(i);
+          decisions.put(new JSONObject().put("id",item.getInt("id")).put("action","keep")
+            .put("lemma",item.getString("word").equals("timber") ? "fiction" : item.getString("word")).put("reason","useful").put("level",data.getString("targetLevel")));
+        }
+        Thread.sleep(1200);
+        content=new JSONObject().put("decisions",decisions).toString();
+      }else if(system.contains("vocabulary-analysis-v1")){
         analysisRequests.incrementAndGet();
         JSONArray vocabulary=new JSONObject(user).getJSONArray("vocabulary"),analyses=new JSONArray();
         for(int i=0;i<vocabulary.length();i++){

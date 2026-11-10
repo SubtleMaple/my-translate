@@ -46,6 +46,7 @@ public final class MainActivity extends Activity {
   private final Set<String> cancelled = ConcurrentHashMap.newKeySet();
   private final Map<String, Future<?>> jobs = new ConcurrentHashMap<>();
   private JSONObject exportRequest;
+  private android.webkit.ValueCallback<Uri[]> corpusSelection;
   private SecretKey storageKey;
 
   private static JSONObject object(Object... pairs) {
@@ -94,6 +95,15 @@ public final class MainActivity extends Activity {
     settings.setSupportMultipleWindows(false);
     settings.setMediaPlaybackRequiresUserGesture(true);
     web.setWebChromeClient(new WebChromeClient() {
+      @Override public boolean onShowFileChooser(WebView view, android.webkit.ValueCallback<Uri[]> callback, FileChooserParams params) {
+        if (backend || view != ui || corpusSelection != null) { callback.onReceiveValue(null); return true; }
+        corpusSelection = callback;
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*")
+          .putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"text/*", "application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/octet-stream"});
+        try { startActivityForResult(intent, 11); }
+        catch (android.content.ActivityNotFoundException e) { corpusSelection = null; callback.onReceiveValue(null); }
+        return true;
+      }
       @Override public boolean onConsoleMessage(android.webkit.ConsoleMessage message) {
         if (!ready && message.messageLevel() == android.webkit.ConsoleMessage.MessageLevel.ERROR) {
           android.util.Log.e("MyTranslateStartup", message.message());
@@ -287,6 +297,13 @@ public final class MainActivity extends Activity {
   }
   @Override protected void onActivityResult(int code, int result, Intent data) {
     super.onActivityResult(code, result, data);
+    if (code == 11 && corpusSelection != null) {
+      Uri uri = result == RESULT_OK && data != null ? data.getData() : null;
+      android.webkit.ValueCallback<Uri[]> callback = corpusSelection;
+      corpusSelection = null;
+      callback.onReceiveValue(uri != null && "content".equals(uri.getScheme()) ? new Uri[]{uri} : null);
+      return;
+    }
     if (code != 10 || exportRequest == null) return;
     JSONObject request = exportRequest; exportRequest = null;
     if (result != RESULT_OK || data == null || data.getData() == null) { evaluate(service, "receiveExport", object("status", "cancelled").toString()); return; }
